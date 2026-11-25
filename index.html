@@ -115,6 +115,11 @@ footer>*{pointer-events:auto}
 .btns button{padding:12px 26px;border-radius:10px;font-weight:800;letter-spacing:1px;background:rgba(255,255,255,.1);font-size:16px}
 .btns button:hover{background:rgba(255,255,255,.2)}
 .btns button.pri{background:#ff2d2d}.btns button.pri:hover{background:#ff5252}
+#settings{z-index:5}
+.srow{margin-bottom:16px}.srow label{display:flex;justify-content:space-between;font-weight:700;margin-bottom:8px;color:#d4dcec}
+.srow b{color:#ffd54a}.srow input[type=range]{width:100%;accent-color:#ff2d2d}
+.srow.chk label{justify-content:flex-start;gap:10px;font-weight:600;cursor:pointer}.srow.chk input{width:18px;height:18px;accent-color:#ff2d2d}
+.srow .seg button{padding:9px 4px}
 #loading{background:#05070c;font-size:28px;font-weight:800;letter-spacing:4px;font-style:italic}
 #noWebgl{padding:40px;text-align:center}
 </style>
@@ -126,7 +131,7 @@ footer>*{pointer-events:auto}
   <header>
     <div class="logo">TURBO<span>GP</span></div>
     <div class="topR">
-      <button class="pill btn" id="qualBtn">Grafik: Hoch</button>
+      <button class="pill btn" id="setBtn">⚙ Einstellungen</button>
       <div class="pill money" id="moneyEl">0 €</div>
     </div>
   </header>
@@ -159,6 +164,14 @@ footer>*{pointer-events:auto}
   <div id="hint"></div>
 </div>
 
+<div id="settings" class="overlay hidden"><div class="box" style="text-align:left;min-width:420px">
+  <h1 style="font-size:32px;text-align:center;margin-bottom:18px">EINSTELLUNGEN</h1>
+  <div class="srow"><label>Anzahl der Bots <b id="setBotsV"></b></label><input type="range" id="setBots" min="1" max="15" step="1"></div>
+  <div class="srow"><label>Grafikqualität</label><div class="seg" id="setQual"></div></div>
+  <div class="srow"><label>Sichtfeld (FOV) <b id="setFovV"></b></label><input type="range" id="setFov" min="60" max="100" step="1"></div>
+  <div class="srow chk"><label><input type="checkbox" id="setAuto"> Qualität bei niedrigen FPS automatisch senken</label></div>
+  <div class="srow chk"><label><input type="checkbox" id="setSound"> Ton an</label></div>
+  <div class="btns" style="margin-top:20px"><button class="pri" id="setClose">Fertig</button></div></div></div>
 <div id="pause" class="overlay hidden"><div class="box"><h1>PAUSE</h1><div class="big">&nbsp;</div>
   <div class="btns"><button class="pri" id="bResume">Weiter</button><button id="bRestart">Neustart</button><button id="bQuit">Hauptmenü</button></div></div></div>
 <div id="result" class="overlay hidden"><div class="box" id="resultBox"></div></div>

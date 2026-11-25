@@ -103,8 +103,8 @@ const DIFFS = {
 };
 const PRIZES = [4000, 2500, 1500]; // Platz 1-3
 
-const BOT_NAMES = ['Luca Ferraro', 'Max Bergmann', 'Sven Lindqvist', 'Diego Alvarez', 'Kenji Sato', 'Oliver Hayes', 'Pierre Duval', 'Mateo Rossi', 'Jonas Keller', 'Arman Petrov', 'Felix Moreau'];
-const BOT_COLORS = [[0xe8e8e8, 0xd8232a], [0x00b7c9, 0x102030], [0xff6a00, 0x111111], [0x2a2f9e, 0xffffff], [0xd0d000, 0x222222], [0xcc2a8a, 0xffffff], [0x1a1a1a, 0xff2a2a], [0x7bd0ff, 0x0a3d62], [0x8bc34a, 0x1b1b1b], [0xff8fa3, 0x4a0d2e], [0x9e9e9e, 0xffd400]];
+const BOT_NAMES = ['Luca Ferraro', 'Max Bergmann', 'Sven Lindqvist', 'Diego Alvarez', 'Kenji Sato', 'Oliver Hayes', 'Pierre Duval', 'Mateo Rossi', 'Jonas Keller', 'Arman Petrov', 'Felix Moreau', 'Noah Becker', 'Rafael Costa', 'Elias Novak', 'Hugo Lambert'];
+const BOT_COLORS = [[0xe8e8e8, 0xd8232a], [0x00b7c9, 0x102030], [0xff6a00, 0x111111], [0x2a2f9e, 0xffffff], [0xd0d000, 0x222222], [0xcc2a8a, 0xffffff], [0x1a1a1a, 0xff2a2a], [0x7bd0ff, 0x0a3d62], [0x8bc34a, 0x1b1b1b], [0xff8fa3, 0x4a0d2e], [0x9e9e9e, 0xffd400], [0x00796b, 0xffeb3b], [0x5d4037, 0xffffff], [0xb71c1c, 0x212121], [0x3949ab, 0xff9800]];
 
 function makeCar(opts) {
   return Object.assign({
