@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TURBO GP – Formel 1 Rennsimulator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#05070c;color:#fff;font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;user-select:none;-webkit-user-select:none}
+canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+.hidden{display:none!important}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+
+/* ------------- Menü ------------- */
+#menu{position:fixed;inset:0;display:flex;flex-direction:column;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 55%,rgba(0,0,0,0) 25%,rgba(3,5,10,.75) 100%)}
+#menu>*{pointer-events:auto}
+#menu header{display:flex;justify-content:space-between;align-items:center;padding:18px 28px;pointer-events:none}
+#menu header>*{pointer-events:auto}
+.logo{font-weight:900;font-style:italic;font-size:34px;letter-spacing:2px;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.logo span{color:#ff2d2d;margin-left:6px}
+.topR{display:flex;gap:12px;align-items:center}
+.pill{background:rgba(10,14,22,.8);border:1px solid rgba(255,255,255,.15);padding:9px 18px;border-radius:30px;font-weight:700;font-size:18px;backdrop-filter:blur(8px)}
+.pill.money{color:#ffd54a}
+.pill.btn:hover{background:rgba(40,50,70,.9)}
+.panels{flex:1;display:flex;justify-content:space-between;padding:0 28px;min-height:0;pointer-events:none}
+.panel{width:min(400px,32vw);min-width:300px;background:rgba(8,11,18,.78);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:16px;backdrop-filter:blur(10px);overflow-y:auto;max-height:100%;pointer-events:auto}
+.panel h2{font-size:14px;letter-spacing:2px;text-transform:uppercase;color:#9aa7bd;margin:4px 0 10px;display:flex;align-items:center;gap:8px}
+.panel h2 b{background:#ff2d2d;color:#fff;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+.panel h2:not(:first-child){margin-top:18px}
+.panel::-webkit-scrollbar{width:6px}.panel::-webkit-scrollbar-thumb{background:#333b4d;border-radius:3px}
+.card{display:flex;gap:12px;align-items:center;padding:10px;border-radius:10px;border:2px solid transparent;background:rgba(255,255,255,.05);margin-bottom:8px;cursor:pointer;transition:.15s}
+.card:hover{background:rgba(255,255,255,.1)}
+.card.sel{border-color:#ff2d2d;background:rgba(255,45,45,.12)}
+.card canvas{width:84px;height:64px;border-radius:6px;background:rgba(0,0,0,.35);flex:none}
+.card .ct{flex:1;min-width:0}
+.card .nm{font-weight:800;font-size:16px}
+.card .sub{font-size:12px;color:#9aa7bd;margin-top:2px;line-height:1.35}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:9px;background:rgba(255,255,255,.12);margin-right:4px;color:#dfe6f5}
+.seg{display:flex;gap:8px}
+.seg button{flex:1;padding:11px 4px;border-radius:9px;background:rgba(255,255,255,.07);border:2px solid transparent;font-weight:800;letter-spacing:1px;text-transform:uppercase;font-size:13px}
+.seg button:hover{background:rgba(255,255,255,.14)}
+.seg button.sel{border-color:#ff2d2d;background:rgba(255,45,45,.18)}
+#diffInfo{font-size:13px;color:#b7c2d6;margin-top:10px;line-height:1.5}
+#diffInfo b{color:#ffd54a}
+.car{flex-direction:column;align-items:stretch;gap:6px}
+.car .row1{display:flex;justify-content:space-between;align-items:center}
+.car .stat{display:flex;align-items:center;gap:8px;font-size:11px;color:#9aa7bd}
+.car .stat span{width:62px}
+.car .bar{flex:1;height:6px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden}
+.car .bar i{display:block;height:100%;background:linear-gradient(90deg,#ff7a2d,#ff2d2d);border-radius:3px}
+.car .act{margin-top:4px;padding:8px;border-radius:8px;font-weight:800;text-align:center;font-size:13px;letter-spacing:1px}
+.act.own{background:rgba(60,200,120,.18);color:#6ee7a0}
+.act.use{background:#ff2d2d;color:#fff}
+.act.buy{background:#ffd54a;color:#201800}
+.act.buy:hover{background:#ffe27a}
+.act.no{background:rgba(255,255,255,.07);color:#7f8aa0}
+footer{display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 20px 18px;pointer-events:none}
+footer>*{pointer-events:auto}
+#startBtn{background:linear-gradient(180deg,#ff3b3b,#c80f0f);padding:16px 54px;border-radius:12px;font-weight:900;font-size:22px;letter-spacing:3px;font-style:italic;box-shadow:0 6px 28px rgba(255,30,30,.45);transition:.15s}
+#startBtn:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 10px 36px rgba(255,30,30,.65)}
+.keys{font-size:12px;color:#b7c2d6;background:rgba(8,11,18,.7);padding:6px 14px;border-radius:20px}
+.keys kbd{background:#252c3c;border:1px solid #3a4560;border-bottom-width:2px;padding:1px 6px;border-radius:4px;font-family:inherit;font-weight:700;color:#fff;margin:0 2px}
+#carName{position:fixed;left:50%;top:84px;transform:translateX(-50%);text-align:center;pointer-events:none;text-shadow:0 2px 14px #000}
+#carName div:first-child{font-size:30px;font-weight:900;font-style:italic;letter-spacing:2px}
+#carName div:last-child{font-size:14px;color:#c4cee2}
+
+/* ------------- HUD ------------- */
+#hud{position:fixed;inset:0;pointer-events:none}
+#vig{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 55%,rgba(0,0,0,.55) 100%);opacity:.5;transition:opacity .2s}
+#flash{position:absolute;inset:0;background:#ff2a00;opacity:0;pointer-events:none}
+#posBox{position:absolute;left:24px;top:20px;text-shadow:0 2px 8px rgba(0,0,0,.7)}
+#posBig{font-size:82px;font-weight:900;font-style:italic;line-height:.9}
+#posBox .of{font-size:30px;font-weight:700;color:#cfd7e6;margin-left:4px}
+#lapTxt{font-size:18px;font-weight:800;letter-spacing:2px;margin-top:6px}
+#board{margin-top:12px;font-size:14px;font-weight:700;background:rgba(5,8,14,.55);border-radius:8px;padding:6px 0;min-width:190px;backdrop-filter:blur(4px)}
+#board div{padding:2px 12px;display:flex;gap:8px;white-space:nowrap}
+#board div i{font-style:normal;width:16px;color:#9aa7bd}
+#board div.me{background:rgba(255,213,74,.9);color:#111}
+#board div.me i{color:#111}
+#mapBox{position:absolute;right:24px;top:20px;text-align:right;text-shadow:0 2px 8px rgba(0,0,0,.7)}
+#map{width:190px;height:190px;background:rgba(5,8,14,.5);border-radius:12px;display:block;margin-left:auto}
+#timeTxt{font-size:30px;font-weight:800;margin-top:8px;font-variant-numeric:tabular-nums}
+#lastLap{font-size:14px;color:#cfd7e6;margin-top:2px;font-variant-numeric:tabular-nums}
+#speedo{position:absolute;right:30px;bottom:24px;text-align:right;text-shadow:0 2px 10px rgba(0,0,0,.8)}
+#spd{font-size:84px;font-weight:900;font-style:italic;line-height:.9;font-variant-numeric:tabular-nums}
+#speedo .unit{font-size:16px;font-weight:700;color:#cfd7e6;letter-spacing:2px}
+#gear{position:absolute;left:-74px;bottom:2px;font-size:56px;font-weight:900;color:#ffd54a;width:56px;text-align:center}
+#rpm{display:flex;gap:3px;margin-top:8px;justify-content:flex-end}
+#rpm i{width:9px;height:14px;background:rgba(255,255,255,.18);border-radius:2px;transform:skewX(-14deg)}
+#rpm i.on{background:#3ddc84}#rpm i.on.y{background:#ffd54a}#rpm i.on.r{background:#ff3b3b}
+#lights{position:absolute;left:50%;top:14%;transform:translateX(-50%);display:flex;gap:16px;background:rgba(0,0,0,.65);padding:14px 22px;border-radius:14px}
+#lights i{width:46px;height:46px;border-radius:50%;background:#2a0a0a;border:3px solid #111;transition:.05s}
+#lights i.on{background:#ff1a1a;box-shadow:0 0 22px #ff1a1a}
+#banner{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);font-size:64px;font-weight:900;font-style:italic;letter-spacing:3px;text-shadow:0 4px 24px rgba(0,0,0,.8);opacity:0;transition:opacity .25s;text-align:center;white-space:nowrap}
+#banner.show{opacity:1}
+#hint{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);font-size:13px;color:#d4dcec;background:rgba(0,0,0,.45);padding:4px 14px;border-radius:14px}
+
+/* ------------- Overlays ------------- */
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(3,5,10,.72);backdrop-filter:blur(6px)}
+.box{background:rgba(12,16,26,.96);border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:30px 38px;min-width:380px;max-width:92vw;text-align:center;box-shadow:0 20px 80px rgba(0,0,0,.7)}
+.box h1{font-size:44px;font-style:italic;font-weight:900;letter-spacing:2px}
+.box h1.win{color:#ffd54a}.box h1.lose{color:#9aa7bd}
+.box .big{font-size:20px;margin:10px 0;color:#d4dcec}
+.box .prize{font-size:34px;font-weight:900;color:#6ee7a0;margin:6px 0 14px}
+.box table{width:100%;border-collapse:collapse;margin:12px 0 18px;font-size:15px;text-align:left}
+.box td{padding:4px 8px;border-bottom:1px solid rgba(255,255,255,.07)}
+.box tr.me td{background:rgba(255,213,74,.2);font-weight:800}
+.box td:first-child{width:30px;color:#9aa7bd}
+.box td:last-child{text-align:right;color:#9aa7bd;font-variant-numeric:tabular-nums}
+.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btns button{padding:12px 26px;border-radius:10px;font-weight:800;letter-spacing:1px;background:rgba(255,255,255,.1);font-size:16px}
+.btns button:hover{background:rgba(255,255,255,.2)}
+.btns button.pri{background:#ff2d2d}.btns button.pri:hover{background:#ff5252}
+#loading{background:#05070c;font-size:28px;font-weight:800;letter-spacing:4px;font-style:italic}
+#noWebgl{padding:40px;text-align:center}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="menu">
+  <header>
+    <div class="logo">TURBO<span>GP</span></div>
+    <div class="topR">
+      <button class="pill btn" id="qualBtn">Grafik: Hoch</button>
+      <div class="pill money" id="moneyEl">0 €</div>
+    </div>
+  </header>
+  <div id="carName"><div></div><div></div></div>
+  <div class="panels">
+    <section class="panel">
+      <h2><b>1</b> Strecke</h2><div id="trackList"></div>
+      <h2><b>2</b> Schwierigkeit der Bots</h2>
+      <div class="seg" id="diffList"></div>
+      <p id="diffInfo"></p>
+    </section>
+    <section class="panel">
+      <h2><b>3</b> Garage</h2><div id="carList"></div>
+    </section>
+  </div>
+  <footer>
+    <button id="startBtn">RENNEN STARTEN</button>
+    <div class="keys"><kbd>W</kbd> Gas &nbsp; <kbd>S</kbd> Bremse / Rückwärts &nbsp; <kbd>A</kbd><kbd>D</kbd> Lenken &nbsp; <kbd>C</kbd> Kamera &nbsp; <kbd>R</kbd> Zurücksetzen &nbsp; <kbd>M</kbd> Ton &nbsp; <kbd>Esc</kbd> Pause &nbsp;·&nbsp; Platz 1–3 = Preisgeld</div>
+  </footer>
+</div>
+
+<div id="hud" class="hidden">
+  <div id="vig"></div><div id="flash"></div>
+  <div id="posBox"><span id="posBig">8</span><span class="of">/8</span><div id="lapTxt"></div><div id="board"></div></div>
+  <div id="mapBox"><canvas id="map" width="380" height="380"></canvas><div id="timeTxt">0:00.00</div><div id="lastLap"></div></div>
+  <div id="speedo"><div id="gear">N</div><div id="spd">0</div><div class="unit">KM/H</div><div id="rpm"></div></div>
+  <div id="lights"><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="banner"></div>
+  <div id="hint"></div>
+</div>
+
+<div id="pause" class="overlay hidden"><div class="box"><h1>PAUSE</h1><div class="big">&nbsp;</div>
+  <div class="btns"><button class="pri" id="bResume">Weiter</button><button id="bRestart">Neustart</button><button id="bQuit">Hauptmenü</button></div></div></div>
+<div id="result" class="overlay hidden"><div class="box" id="resultBox"></div></div>
+<div id="loading" class="overlay hidden">LADE STRECKE …</div>
+<div id="noWebgl" class="overlay hidden"><div class="box"><h1>WebGL fehlt</h1><div class="big">Dein Browser unterstützt WebGL nicht oder es ist deaktiviert.</div></div></div>
+
+<script src="three.min.js"></script>
+<script src="core.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
