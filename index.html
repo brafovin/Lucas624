@@ -73,7 +73,7 @@ footer>*{pointer-events:auto}
 #posBig{font-size:82px;font-weight:900;font-style:italic;line-height:.9}
 #posBox .of{font-size:30px;font-weight:700;color:#cfd7e6;margin-left:4px}
 #lapTxt{font-size:18px;font-weight:800;letter-spacing:2px;margin-top:6px}
-#board{margin-top:12px;font-size:14px;font-weight:700;background:rgba(5,8,14,.55);border-radius:8px;padding:6px 0;min-width:190px;backdrop-filter:blur(4px)}
+#board{margin-top:12px;font-size:14px;font-weight:700;background:rgba(5,8,14,.55);border-radius:8px;padding:6px 0;min-width:190px;}
 #board div{padding:2px 12px;display:flex;gap:8px;white-space:nowrap}
 #board div i{font-style:normal;width:16px;color:#9aa7bd}
 #board div.me{background:rgba(255,213,74,.9);color:#111}
@@ -169,7 +169,9 @@ footer>*{pointer-events:auto}
   <div class="srow"><label>Anzahl der Bots <b id="setBotsV"></b></label><input type="range" id="setBots" min="1" max="15" step="1"></div>
   <div class="srow"><label>Grafikqualität</label><div class="seg" id="setQual"></div><p id="setQualInfo" style="font-size:12px;color:#9aa7bd;margin-top:8px;line-height:1.5"></p></div>
   <div class="srow"><label>Sichtfeld (FOV) <b id="setFovV"></b></label><input type="range" id="setFov" min="60" max="100" step="1"></div>
-  <div class="srow chk"><label><input type="checkbox" id="setAuto"> Qualität bei niedrigen FPS automatisch senken</label></div>
+  <div class="srow chk"><label><input type="checkbox" id="setRefl"> Ultra: Spiegelungen auf den Autos</label></div>
+  <div class="srow chk"><label><input type="checkbox" id="setAO"> Ultra: Umgebungsverdeckung (AO) – kostet viel Leistung</label></div>
+  <div class="srow chk"><label><input type="checkbox" id="setAuto"> Auflösung/Qualität bei niedrigen FPS automatisch anpassen</label></div>
   <div class="srow chk"><label><input type="checkbox" id="setSound"> Ton an</label></div>
   <div class="btns" style="margin-top:20px"><button class="pri" id="setClose">Fertig</button></div></div></div>
 <div id="pause" class="overlay hidden"><div class="box"><h1>PAUSE</h1><div class="big">&nbsp;</div>

@@ -10,7 +10,7 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 
 /* ------------------------------------------------------------ Speicherstand */
 const SAVE_KEY = 'turbogp_save_v1';
-const save = { money: 0, owned: ['rookie'], car: 'rookie', track: 0, diff: 'medium', best: {}, quality: 2, muted: false, bots: 11, fov: 70, auto: true };
+const save = { money: 0, owned: ['rookie'], car: 'rookie', track: 0, diff: 'medium', best: {}, quality: 2, muted: false, bots: 11, fov: 70, auto: true, ao: false, refl: true };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); } catch (e) {}
 const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} };
 
@@ -23,15 +23,17 @@ renderer.outputColorSpace = T.SRGBColorSpace;
 renderer.toneMapping = T.ACESFilmicToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = T.PCFSoftShadowMap;
+const Gov = { scale: 1, ema: 0, t: 0, grace: 0 };
 const QUAL = [
   { label: 'Niedrig', pr: 1, shadow: 0, mapSize: 512 },
   { label: 'Mittel', pr: 1, shadow: 1, mapSize: 1024 },
-  { label: 'Hoch', pr: Math.min(window.devicePixelRatio || 1, 1.75), shadow: 1, mapSize: 2048 },
-  { label: 'Ultra', pr: Math.min(window.devicePixelRatio || 1, 2), shadow: 1, mapSize: 4096 }
+  { label: 'Hoch', pr: Math.min(window.devicePixelRatio || 1, 1.5), shadow: 1, mapSize: 2048 },
+  { label: 'Ultra', pr: Math.min(window.devicePixelRatio || 1, 1.75), shadow: 1, mapSize: 3072 }
 ];
+function applyRes() { renderer.setPixelRatio(QUAL[save.quality].pr * Gov.scale); renderer.setSize(innerWidth, innerHeight, false); if (typeof Post !== 'undefined') Post.resize(); }
 function applyQuality() {
   const q = QUAL[save.quality];
-  renderer.setPixelRatio(q.pr);
+  renderer.setPixelRatio(q.pr * Gov.scale);
   renderer.setSize(innerWidth, innerHeight, false);
   renderer.shadowMap.enabled = q.shadow > 0;
   if (raceScene && raceScene.sun) { raceScene.sun.castShadow = q.shadow > 0; raceScene.sun.shadow.mapSize.set(q.mapSize, q.mapSize); if (raceScene.sun.shadow.map) { raceScene.sun.shadow.map.dispose(); raceScene.sun.shadow.map = null; } }
@@ -160,7 +162,7 @@ function preloadImages() {
 function pbr(name) {
   if (PT[name] !== undefined) return PT[name];
   const im = IMG[name]; if (!im || !im.width) return PT[name] = null;
-  const t = new T.Texture(im); t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const t = new T.Texture(im); t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   t.colorSpace = name.endsWith('_c') ? T.SRGBColorSpace : T.NoColorSpace; t.needsUpdate = true; return PT[name] = t;
 }
 function scaleUV(geo, su, sv) { const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv); return geo; }
@@ -229,7 +231,7 @@ function noiseDisp(geo, amp, freq) {
   return geo;
 }
 function makeOakGeo() {
-  const parts = []; for (let k = 0; k < 7; k++) { const r = rnd(2.0, 3.1), g = noiseDisp(new T.SphereGeometry(r, 14, 10), 0.14, 0.9 + k * 0.17); g.translate(rnd(-2.2, 2.2), rnd(-1.6, 2.2) + (k === 0 ? 1.2 : 0), rnd(-2.2, 2.2)); parts.push(g); }
+  const parts = []; for (let k = 0; k < 7; k++) { const r = rnd(2.0, 3.1), g = noiseDisp(new T.SphereGeometry(r, 10, 7), 0.14, 0.9 + k * 0.17); g.translate(rnd(-2.2, 2.2), rnd(-1.6, 2.2) + (k === 0 ? 1.2 : 0), rnd(-2.2, 2.2)); parts.push(g); }
   return mergeGeos(parts);
 }
 function makePineGeo() {
@@ -253,7 +255,7 @@ function skyMaterial(th) {
     fragmentShader: `uniform vec3 top,mid,bot,sunDir,sunCol; uniform float time, cloudAmt; varying vec3 vD;
       float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
       float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x), mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x), f.y); }
-      float fbm(vec2 p){ float a=0.5, s=0.0; for(int i=0;i<6;i++){ s+=a*vnoise(p); p=p*2.03+vec2(17.3,9.1); a*=0.5; } return s; }
+      float fbm(vec2 p){ float a=0.5, s=0.0; for(int i=0;i<5;i++){ s+=a*vnoise(p); p=p*2.03+vec2(17.3,9.1); a*=0.5; } return s; }
       void main(){
         vec3 d = normalize(vD); float h = d.y;
         vec3 c = h>0.0 ? mix(mid,top,pow(h,0.5)) : mix(mid,bot,pow(-h,0.45));
@@ -531,7 +533,7 @@ function buildRaceScene(trackIdx, nCars) {
     const spots = []; for (let i = 0; i < tr.N; i++) { if (inTun(i)) continue; const c = tr.curv[i]; if (Math.abs(c) > 0.011 && i % 1 === 0) spots.push([i, c > 0 ? 1 : -1]); }
     const tires = new T.InstancedMesh(tireG, tireIM, spots.length * 12); let ti = 0;
     spots.forEach(([i, sg]) => { const base = new T.Color([0x1a1a1c, 0x1a1a1c, 0x1a1a1c, 0x222226, 0xdddddd, 0x2255aa, 0xaa2222][(Math.random() * 7) | 0]); for (let L = 0; L < 12; L++) { const col = L >> 2, lay = L & 3, ly = lay % 3, tq = (col - 1.5) * 1.0 + (lay === 3 ? 0.33 : 0); dm.position.set(tr.px[i] + tr.rx[i] * (off - 0.36) * sg + tr.tx[i] * tq, 0.17 + ly * 0.33, tr.pz[i] + tr.rz[i] * (off - 0.36) * sg + tr.tz[i] * tq); dm.rotation.set(0, rnd(0, 6), 0); dm.scale.set(1, 1, 1); dm.updateMatrix(); tires.setMatrixAt(ti, dm.matrix); tires.setColorAt(ti, base); ti++; } });
-    tires.castShadow = true; tires.receiveShadow = true; scene.add(tires);
+    tires.castShadow = false; tires.receiveShadow = true; scene.add(tires);
   }
   // Start/Ziel
   const sl = new T.Group(); sl.position.set(tr.px[0], 0, tr.pz[0]); sl.rotation.y = tr.h[0]; scene.add(sl);
@@ -597,7 +599,7 @@ function buildRaceScene(trackIdx, nCars) {
   const dummy = new T.Object3D();
 
   if (cfg.theme === 'day') {
-    const pts = scatter(950, 6, 260, 5000), n = pts.length;
+    const pts = scatter(save.quality >= 3 ? 650 : 950, 6, 260, 5000), n = pts.length;
     if (save.quality >= 3) {
       const ft = texFoliage(), fm = new T.MeshStandardMaterial({ map: ft, roughness: 0.88, metalness: 0 });
       const nOak = Math.floor(n * 0.6), nPine = n - nOak;
@@ -612,7 +614,7 @@ function buildRaceScene(trackIdx, nCars) {
         if (oak) { dummy.position.set(x, th + 1.6 * s, z); dummy.updateMatrix(); oakI.setMatrixAt(i, dummy.matrix); col.setHSL(rnd(0.22, 0.31), rnd(0.4, 0.6), rnd(0.55, 0.9)); oakI.setColorAt(i, col); }
         else { const j = i - nOak; dummy.position.set(x, 1.4 * s, z); dummy.updateMatrix(); pineI.setMatrixAt(j, dummy.matrix); col.setHSL(rnd(0.3, 0.38), rnd(0.35, 0.5), rnd(0.35, 0.6)); pineI.setColorAt(j, col); }
       });
-      [trunkI, oakI, pineI].forEach(m => { m.castShadow = true; m.receiveShadow = true; scene.add(m); });
+      [trunkI, oakI, pineI].forEach(m => { m.castShadow = false; m.receiveShadow = true; scene.add(m); });
     } else {
     const trunk = new T.InstancedMesh(new T.CylinderGeometry(0.35, 0.5, 4, 6), new T.MeshStandardMaterial({ color: 0x5a3b22, roughness: 1 }), n);
     const c1 = new T.InstancedMesh(new T.ConeGeometry(3.4, 8, 8), new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true }), n);
@@ -855,7 +857,7 @@ const Skid = {
     const l = this.last.get(key); this.last.set(key, { x, z }); if (!l) return;
     const dx = x - l.x, dz = z - l.z, len = Math.hypot(dx, dz); if (len < 0.2 || len > 4) return;
     const nx = -dz / len * 0.13, nz = dx / len * 0.13, a = this.mesh.geometry.attributes.position, i = (this.n++ % this.max) * 12, y = 0.04;
-    a.array.set([l.x - nx, y, l.z - nz, l.x + nx, y, l.z + nz, x - nx, y, z - nz, x + nx, y, z + nz], i); a.needsUpdate = true;
+    a.array.set([l.x - nx, y, l.z - nz, l.x + nx, y, l.z + nz, x - nx, y, z - nz, x + nx, y, z + nz], i); a.clearUpdateRanges(); a.addUpdateRange(i, 12); a.needsUpdate = true;
     this.mesh.geometry.setDrawRange(0, Math.min(this.n, this.max) * 6);
   },
   stop(key) { this.last.delete(key); }
@@ -932,11 +934,11 @@ const LensShader = {
       vec2 dir = normalize(c + 1e-5);
       float blur = speed * 0.05 * smoothstep(0.12, 0.75, r * 1.3);
       vec3 col = vec3(0.0);
-      for (int i = 0; i < 10; i++) {
-        float t = float(i) / 9.0; vec2 uv = vUv - c * blur * t;
+      for (int i = 0; i < 6; i++) {
+        float t = float(i) / 5.0; vec2 uv = vUv - c * blur * t;
         col.r += texture2D(tDiffuse, uv - dir * ca).r; col.g += texture2D(tDiffuse, uv).g; col.b += texture2D(tDiffuse, uv + dir * ca).b;
       }
-      col /= 10.0;
+      col /= 6.0;
       col *= 1.0 - 0.5 * smoothstep(0.3, 1.0, r * 0.95);
       col += (hash(vUv * vec2(1920.0, 1080.0) + time) - 0.5) * 0.014;
       gl_FragColor = vec4(col, 1.0);
@@ -948,17 +950,18 @@ const Post = {
   build(scene, cam) {
     const P = window.POST, size = renderer.getDrawingBufferSize(new T.Vector2());
     let rt;
-    try { rt = new T.WebGLRenderTarget(size.x, size.y, { type: T.HalfFloatType, samples: 4 }); } catch (e) { rt = new T.WebGLRenderTarget(size.x, size.y, { type: T.HalfFloatType }); }
+    try { rt = new T.WebGLRenderTarget(size.x, size.y, { type: T.HalfFloatType, samples: renderer.getPixelRatio() > 1.25 ? 2 : 4 }); } catch (e) { rt = new T.WebGLRenderTarget(size.x, size.y, { type: T.HalfFloatType }); }
     const comp = this.composer = new P.EffectComposer(renderer, rt);
     comp.setPixelRatio(renderer.getPixelRatio()); comp.setSize(innerWidth, innerHeight);
     const pa = this.passes;
     pa.render = new P.RenderPass(scene, cam);
     pa.ao = new P.GTAOPass(scene, cam, innerWidth, innerHeight);
     pa.ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 16, distanceFallOff: 1.0, screenSpaceRadius: false });
-    pa.ao.blendIntensity = 0.85;
+    pa.ao.blendIntensity = 0.85; pa.ao.enabled = !!save.ao;
+    const aoSize = pa.ao.setSize.bind(pa.ao); pa.ao.setSize = (w, h) => aoSize(Math.ceil(w / 2), Math.ceil(h / 2)); pa.ao.setSize(innerWidth, innerHeight);
     const ov = pa.ao.overrideVisibility.bind(pa.ao);
     pa.ao.overrideVisibility = function () { ov(); this.scene.traverse(o => { if (o.isSprite || o.userData.noAO) o.visible = false; }); };
-    pa.bloom = new P.UnrealBloomPass(new T.Vector2(innerWidth, innerHeight), 0.3, 0.55, 1.0);
+    pa.bloom = new P.UnrealBloomPass(new T.Vector2(innerWidth / 2, innerHeight / 2), 0.3, 0.55, 1.0);
     pa.lens = new P.ShaderPass(LensShader);
     pa.out = new P.OutputPass();
     [pa.render, pa.ao, pa.bloom, pa.lens, pa.out].forEach(p => comp.addPass(p));
@@ -967,7 +970,7 @@ const Post = {
   render(scene, cam, speed, bloom, dt) {
     try {
       if (!this.composer) this.build(scene, cam);
-      const pa = this.passes; pa.render.scene = pa.ao.scene = scene; pa.render.camera = pa.ao.camera = cam;
+      const pa = this.passes; pa.ao.enabled = !!save.ao; pa.render.scene = pa.ao.scene = scene; pa.render.camera = pa.ao.camera = cam;
       pa.bloom.strength = bloom === undefined ? 0.3 : bloom; pa.bloom.threshold = scene.userData.night ? 1.15 : 1.0;
       pa.lens.uniforms.speed.value = clamp(speed || 0, 0, 1); pa.lens.uniforms.time.value = (pa.lens.uniforms.time.value + (dt || 0.016)) % 100; pa.lens.uniforms.aspect.value = innerWidth / innerHeight;
       this.composer.render();
@@ -1060,12 +1063,15 @@ function renderSettings() {
   $('setQualInfo').textContent = ['Niedrig: schnellste Darstellung, einfache Schatten.', 'Mittel: Schatten, Standard-Details.', 'Hoch: Himmel mit Wolken, Kiesbetten, Reifenspuren, Bodendetail.', 'Ultra: Post-Processing (Bloom, Umgebungsverdeckung, Bewegungsunschärfe, Antialiasing), hochdetaillierte Autos mit Spiegelungen, Fangzäune, Reifenstapel, realistische Bäume, größere Schattenqualität. Braucht eine starke Grafikkarte.'][save.quality];
   $('setBots').value = save.bots; $('setBotsV').textContent = save.bots + ' Bots · ' + (save.bots + 1) + ' Autos';
   $('setFov').value = save.fov; $('setFovV').textContent = save.fov + '°';
+  $('setAO').checked = !!save.ao; $('setRefl').checked = !!save.refl;
   $('setAuto').checked = !!save.auto; $('setSound').checked = !save.muted;
 }
 $('setBtn').onclick = () => { renderSettings(); $('settings').classList.remove('hidden'); };
 $('setClose').onclick = () => { $('settings').classList.add('hidden'); renderMenu(); };
 $('setBots').oninput = e => { save.bots = clamp(+e.target.value | 0, 1, 15); persist(); renderSettings(); };
 $('setFov').oninput = e => { save.fov = clamp(+e.target.value | 0, 60, 100); persist(); renderSettings(); };
+$('setAO').onchange = e => { save.ao = e.target.checked; persist(); };
+$('setRefl').onchange = e => { save.refl = e.target.checked; persist(); };
 $('setAuto').onchange = e => { save.auto = e.target.checked; persist(); };
 $('setSound').onchange = e => { Sound.init(); Sound.mute(!e.target.checked); };
 
@@ -1268,15 +1274,15 @@ function renderRace(dt) {
     if (c.isPlayer) { c.model.wheelRot.rotation.z = c.steer * 1.4; }
   }
   FX.update(dt); updateDebris(dt);
-  if (save.quality >= 3) {
+  if (save.quality >= 3 && save.refl) {
     if (!S.cube) {
-      const rt = new T.WebGLCubeRenderTarget(192, { generateMipmaps: true, minFilter: T.LinearMipmapLinearFilter, type: T.HalfFloatType });
+      const rt = new T.WebGLCubeRenderTarget(128, { generateMipmaps: true, minFilter: T.LinearMipmapLinearFilter, type: T.HalfFloatType });
       S.cube = { rt, cam: new T.CubeCamera(0.3, 1800, rt), n: 0 }; S.scene.add(S.cube.cam);
       R.cars.forEach(c => { c.model.body.envMap = rt.texture; c.model.acc.envMap = rt.texture; c.model.body.needsUpdate = c.model.acc.needsUpdate = true; });
     }
-    if ((S.cube.n++ % 6) === 0) {
-      S.cube.cam.position.set(p.x, 1.3, p.z); p.model.group.visible = false; const sa = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
-      S.cube.cam.update(renderer, S.scene); renderer.shadowMap.autoUpdate = sa; p.model.group.visible = true;
+    if ((S.cube.n++ % 14) === 0) {
+      S.cube.cam.position.set(p.x, 1.3, p.z); R.cars.forEach(c => c.model.group.visible = false); const sa = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
+      S.cube.cam.update(renderer, S.scene); renderer.shadowMap.autoUpdate = sa; R.cars.forEach(c => c.model.group.visible = true);
     }
   }
   // Kamera
@@ -1341,11 +1347,12 @@ function updateHud(R, p, speed) {
   setHud('timeTxt', fmtTime(Math.max(0, R.time)));
   const dp = p.dead ? 100 : Math.min(95, (p.lost.fw ? 35 : 0) + (p.lost.rw ? 35 : 0) + Math.round(p.dmg * 25)); setHud('dmgTxt', p.dead ? 'AUS' : dp + '%');
   if (hudCache.dmgW !== dp) { hudCache.dmgW = dp; const b = $('dmgBar'); b.style.width = dp + '%'; b.style.background = dp > 66 ? '#ff3b3b' : dp > 33 ? '#ffd54a' : '#3ddc84'; }
-  $('vig').style.opacity = String(0.35 + Math.min(0.55, speed / 140));
+  const vg = Post.enabled() ? '0' : (0.35 + Math.round(Math.min(0.55, speed / 140) * 20) / 20).toFixed(2); if (hudCache.vig !== vg) { hudCache.vig = vg; $('vig').style.opacity = vg; }
   let h = '';
   rk.forEach((c, i) => { h += `<div class="${c.isPlayer ? 'me' : ''}"><i>${i + 1}</i>${c.name}</div>`; });
   setHud('board', h, 'html');
-  // Minimap
+  // Minimap (30 Hz)
+  if ((R.mapTick = (R.mapTick || 0) + 1) % 2) return;
   const cv = $('map'), g = cv.getContext('2d'), m = R.map;
   g.clearRect(0, 0, cv.width, cv.height); g.drawImage(mapBase, 0, 0);
   for (const c of R.cars) {
@@ -1363,7 +1370,7 @@ const STEP = 1 / 120;
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
-  let dt = Math.min(0.05, (now - last) / 1000); last = now;
+  let dt = Math.min(0.05, (now - last) / 1000); last = now; if (dt > 0.045) Gov.ema = 0;
   if (mode === 'menu') {
     showAngle += dt * 0.35;
     if (showCar) showCar.group.rotation.y = showAngle;
@@ -1373,9 +1380,16 @@ function frame(now) {
     showLights.forEach(l => { if (!l.userData.base) l.userData.base = l.intensity; l.intensity = l.userData.base * (Post.enabled() ? 0.5 : 1); });
     renderFrame(showScene, showCam, 0, 0.12, dt);
   } else if (mode === 'race' && race) {
-    // adaptive Qualität
-    fpsAvg += (1 / Math.max(dt, 1e-4) - fpsAvg) * 0.05; fpsT += dt;
-    if (fpsT > 4 && race.time > 2) { fpsT = 0; if (save.auto && fpsAvg < 28 && save.quality > 0) { save.quality--; applyQuality(); persist(); } }
+    // adaptive Auflösung (dynamisch), danach ggf. Stufe senken
+    if (save.auto && race.phase !== 'grid') {
+      Gov.ema = Gov.ema ? Gov.ema + (dt - Gov.ema) * 0.08 : dt; Gov.t += dt;
+      if (Gov.t > 1.2) {
+        Gov.t = 0; const ms = Gov.ema * 1000; let s = Gov.scale;
+        if (ms > 20.5) s = Math.max(0.5, s - (ms > 30 ? 0.15 : 0.07)); else if (ms < 15.5 && s < 1) s = Math.min(1, s + 0.05);
+        if (Math.abs(s - Gov.scale) > 1e-3) { Gov.scale = s; applyRes(); }
+        else if (Gov.scale <= 0.52 && ms > 32 && save.quality > 0) { save.quality--; Gov.scale = 1; Gov.ema = 0; persist(); applyQuality(); showBanner('Grafik automatisch gesenkt: ' + QUAL[save.quality].label, 2200); }
+      }
+    }
     if (!race.paused) {
       race.acc += dt; let n = 0;
       while (race.acc >= STEP && n < 10) { stepRace(STEP); race.acc -= STEP; n++; }
@@ -1388,5 +1402,5 @@ function frame(now) {
 // Start
 $('loading').textContent = 'LADE TEXTUREN …'; $('loading').classList.remove('hidden');
 preloadImages().then(() => { $('loading').classList.add('hidden'); $('loading').textContent = 'LADE STRECKE …'; applyQuality(); renderMenu(); requestAnimationFrame(frame); });
-window.__game = { get postState() { return JSON.stringify({ on: Post.enabled(), built: !!Post.composer, failed: Post.failed, q: save.quality }); }, dbg(p, l) { if (race) race.dbg = p ? { p, l } : null; }, step(n) { for (let i = 0; i < n; i++) stepRace(STEP); }, get race() { return race; }, save, startRace, toMenu, setSel(t, d) { selTrack = t; selDiff = d; } };
+window.__game = { get postState() { return JSON.stringify({ on: Post.enabled(), built: !!Post.composer, failed: Post.failed, q: save.quality, scale: Gov.scale, pr: renderer.getPixelRatio() }); }, dbg(p, l) { if (race) race.dbg = p ? { p, l } : null; }, step(n) { for (let i = 0; i < n; i++) stepRace(STEP); }, get race() { return race; }, save, startRace, toMenu, setSel(t, d) { selTrack = t; selDiff = d; } };
 })();

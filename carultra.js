@@ -94,6 +94,28 @@ function helmetTex(col, acc) {
   return canvasTex(256, 128, (g, w, h) => { g.fillStyle = hex(col); g.fillRect(0, 0, w, h); g.fillStyle = hex(acc); g.fillRect(0, h * .42, w, h * .12); g.fillStyle = '#fff'; g.fillRect(0, h * .55, w, h * .04); g.fillStyle = hex(acc); g.beginPath(); g.arc(w * .75, h * .5, 20, 0, 7); g.fill(); });
 }
 
+/* ---------- Draw-Calls sparen: statische Teile pro Material zusammenfassen ---------- */
+function batchStatic(G, keep, shadowMats) {
+  G.updateMatrixWorld(true);
+  const inv = new T.Matrix4().copy(G.matrixWorld).invert(), groups = new Map();
+  [...G.children].forEach(ch => {
+    if (!ch.isMesh || keep.has(ch)) return;
+    const geo = ch.geometry.index ? ch.geometry.toNonIndexed() : ch.geometry.clone();
+    geo.applyMatrix4(new T.Matrix4().multiplyMatrices(inv, ch.matrixWorld));
+    if (!geo.attributes.uv) geo.setAttribute('uv', new T.BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+    if (!geo.attributes.normal) geo.computeVertexNormals();
+    const e = groups.get(ch.material) || { mat: ch.material, list: [] }; e.list.push(geo); groups.set(ch.material, e); G.remove(ch);
+  });
+  groups.forEach(({ mat, list }) => {
+    if (list.length === 1 && false) return;
+    let n = 0; list.forEach(g => n += g.attributes.position.count);
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2); let o = 0;
+    list.forEach(g => { pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); uv.set(g.attributes.uv.array, o * 2); o += g.attributes.position.count; g.dispose(); });
+    const m = new T.BufferGeometry(); m.setAttribute('position', new T.BufferAttribute(pos, 3)); m.setAttribute('normal', new T.BufferAttribute(nor, 3)); m.setAttribute('uv', new T.BufferAttribute(uv, 2));
+    const mesh = new T.Mesh(m, mat); mesh.castShadow = shadowMats.has(mat); mesh.receiveShadow = true; G.add(mesh);
+  });
+}
+
 /* ---------- Auto ---------- */
 window.makeCarModelUltra = function (spec) {
   const G = new T.Group();
@@ -216,6 +238,7 @@ window.makeCarModelUltra = function (spec) {
   wm(0.14, 0.07, 0.01, new T.MeshStandardMaterial({ color: 0x103018, emissive: 0x2fbf6a, emissiveIntensity: 0.55 }), 0, 0.01, 0.02);
   for (let i = 0; i < 4; i++) wm(0.025, 0.025, 0.015, new T.MeshStandardMaterial({ color: 0x111111, emissive: [0xff2020, 0xffdd00, 0x20a0ff, 0xffffff][i], emissiveIntensity: 1 }), -0.06 + i * 0.04, 0.055, 0.02);
 
+  batchStatic(G, new Set([eng, ...sps]), new Set([body, carbon]));
   return { ultra: true, envBase: 1.0, acc, group: G, fwing: fw, rwing: rw, parts: { nose: nosePivot, sps, eng }, body, bodyBase: new T.Color(0xffffff), wheels: [fl, fr, rl, rr], driver, halo, wheelRot, wheelBase, tail, tailM };
 };
 })();
