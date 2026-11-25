@@ -864,7 +864,7 @@ const Skid = {
 };
 function emitDamageFx(c, dt) {
   // Reifenqualm + Bremsspuren
-  const skidding = !c.onGrass && Math.abs(c.vf) > 8 && (c.slip > 3.6 || (c.inp && c.inp.brake > 0.85 && c.vf > 38));
+  const skidding = !c.onGrass && Math.abs(c.vf) > 8 && (c.slip > 3.6 || (c.drifting && c.slip > 2) || (c.inp && c.inp.brake > 0.85 && c.vf > 38));
   [[-0.9, 1.75], [0.9, 1.75], [-0.88, -1.7], [0.88, -1.7]].forEach(([lx, lz], w) => {
     const key = c.slot * 4 + w, rear = lz > 0, active = skidding && (rear || (c.inp && c.inp.brake > 0.85));
     if (active) { const P = carToWorld(c, lx, 0.1, lz); if (save.quality >= 2 && Skid.mesh) Skid.add(key, P[0], P[2]); if (Math.random() < 0.5) FX.spawn('smoke', P[0], 0.2, P[2], c.vx * 0.15 + rnd(-0.6, 0.6), rnd(0.6, 1.4), c.vz * 0.15 + rnd(-0.6, 0.6), rnd(0.7, 1.3), 0.5, 2.6, 0xe4e4e4, 0.26, -0.15); } else Skid.stop(key);
@@ -1118,7 +1118,7 @@ function initRace() {
   drawMapBase();
   scene.add(camera);
   applyQuality();
-  $('hint').textContent = 'W Gas · S Bremse · A/D Lenken · C Kamera · R Zurücksetzen · Esc Pause';
+  $('hint').textContent = 'W Gas · S Bremse · A/D Lenken · Leertaste Driften · C Kamera · R Zurücksetzen · Esc Pause';
 }
 function setupHud() {
   hudCache = {};
@@ -1176,7 +1176,7 @@ function toMenu() {
 
 function inputForPlayer() {
   const up = keys.KeyW || keys.ArrowUp, down = keys.KeyS || keys.ArrowDown, left = keys.KeyA || keys.ArrowLeft, right = keys.KeyD || keys.ArrowRight;
-  return { throttle: up ? 1 : 0, brake: down ? 1 : 0, steer: (left ? 1 : 0) - (right ? 1 : 0) };
+  return { throttle: up ? 1 : 0, brake: down ? 1 : 0, steer: (left ? 1 : 0) - (right ? 1 : 0), drift: !!keys.Space };
 }
 
 function stepRace(dt) {
@@ -1197,6 +1197,8 @@ function stepRace(dt) {
   const rb = selDiff === 'hard' ? 0 : 0.035;
   for (const c of R.cars) {
     let inp;
+    if (c.removed) continue;
+    if (c.dead && !c.isPlayer && racing) { c.deadT = (c.deadT || 0) + dt; if (c.deadT > 7) { c.removed = true; c.model.group.visible = false; FX.spawn('smoke', c.x, 0.6, c.z, 0, 1.5, 0, 1.6, 2, 5, 0xbbbbbb, 0.6, 0); continue; } }
     if (!racing || (R.phase === 'race' && R.phaseT < (c.reaction || 0) && !c.finished)) { c.inp = { throttle: 0, brake: 0, steer: 0 }; c.vf = 0; continue; }
     if (c.isPlayer && !c.finished) inp = inputForPlayer();
     else {
@@ -1233,6 +1235,7 @@ function stepRace(dt) {
     if (c.impacts.length) handleImpact(c);
     if (c.hit > 0) { if (c.isPlayer) { R.shake = Math.max(R.shake, c.hit); Sound.crash(c.hit); $('flash').style.opacity = String(Math.min(0.35, c.hit * 0.5)); setTimeout(() => $('flash').style.opacity = '0', 90); } c.hit = 0; }
   }
+  if (racing && p.drifting && p.slip > 4.5) { R.driftT = (R.driftT || 0) + dt; if (R.driftT > 0.9 && R.time - (R.driftBanner || -9) > 2.5) { R.driftBanner = R.time; R.driftT = 0; showBanner('DRIFT!', 700); } } else if (!p.drifting) R.driftT = 0;
   // Falsche Richtung / Hängenbleiben
   if (racing && !p.finished) {
     const dh = Math.abs(wrap(p.h - tr.h[p.i]));
@@ -1361,7 +1364,7 @@ function updateHud(R, p, speed) {
     g.beginPath(); g.arc(m.ox + (c.x - m.x0) * m.sc, m.oz + (c.z - m.z0) * m.sc, c.isPlayer ? 9 : 6, 0, 7); g.fill(); g.stroke();
   }
   if (R.phase === 'grid' || R.phase === 'countdown') setHud('hint', 'Bereit machen … ' + (selDiff === 'hard' ? '' : ''));
-  else setHud('hint', R.time < 12 ? 'W Gas · S Bremse · A/D Lenken · C Kamera · R Zurücksetzen · Esc Pause' : '');
+  else setHud('hint', R.time < 12 ? 'W Gas · S Bremse · A/D Lenken · Leertaste Driften · C Kamera · R Zurücksetzen · Esc Pause' : '');
   $('hint').style.display = hudCache.hint ? '' : 'none';
 }
 

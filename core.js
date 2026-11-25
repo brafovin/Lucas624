@@ -164,6 +164,8 @@ function stepCar(c, inp, dt, tr) {
   c.scrape = false;
   let fx = -Math.sin(c.h), fz = -Math.cos(c.h), rx = -fz, rz = fx;
   let vf = c.vx * fx + c.vz * fz, vl = c.vx * rx + c.vz * rz;
+  const drift = !!inp.drift && vf > 10 && !c.dead;
+  c.drifting = drift;
   const limEdge = tr.halfW + tr.kerb;
   const onGrass = Math.abs(c.d) > limEdge && tr.grass;
   c.onGrass = onGrass;
@@ -189,6 +191,7 @@ function stepCar(c, inp, dt, tr) {
   const sgn = vf >= 0 ? 1 : -1;
   a -= sgn * (0.0007 * vf * vf + 0.5 + (c.dead ? 5 : 0));
   if (onGrass) a -= sgn * (3 + Math.abs(vf) * 0.12);
+  if (drift) a -= 2 + vf * 0.03;
   if (vf > topSpd) a -= (vf - topSpd) * 1.6;
   let nvf = vf + a * dt;
   if (brk > 0 && thr === 0 && vf > 0 && nvf < 0 && vf > 0.6) nvf = 0;
@@ -198,8 +201,8 @@ function stepCar(c, inp, dt, tr) {
   // Lenkung / Gierrate
   const gripLat = st.grip * surf + st.down * vf * vf;
   const maxSt = 0.44 / (1 + Math.pow(Math.abs(vf) / 18, 1.6));
-  let yaw = vf * Math.tan(c.steer * maxSt) / 3.4;
-  const yawMax = gripLat / Math.max(Math.abs(vf), 3);
+  let yaw = vf * Math.tan(c.steer * maxSt) / 3.4 * (drift ? 1.3 : 1);
+  const yawMax = gripLat / Math.max(Math.abs(vf), 3) * (drift ? 1.5 : 1);
   yaw = clamp(yaw, -yawMax, yawMax);
   c.h += (yaw + c.spin) * dt;
   c.yaw = yaw;
@@ -209,7 +212,7 @@ function stepCar(c, inp, dt, tr) {
   const nfx = -Math.sin(c.h), nfz = -Math.cos(c.h), nrx = -nfz, nrz = nfx;
   const wvx = fx * vf + rx * vl, wvz = fz * vf + rz * vl;
   vf = wvx * nfx + wvz * nfz; vl = wvx * nrx + wvz * nrz;
-  const k = (onGrass ? 3.2 : 9) / (1 + Math.abs(c.spin) * 2);
+  const k = (onGrass ? 3.2 : 9) / (1 + Math.abs(c.spin) * 2) * (drift ? 0.22 : 1);
   vl *= Math.exp(-k * dt);
   c.vx = nfx * vf + nrx * vl; c.vz = nfz * vf + nrz * vl;
   c.vf = vf; c.vl = vl; c.slip = Math.abs(vl);
@@ -242,6 +245,7 @@ function collideCars(cars) {
   const R = 1.35;
   for (let a = 0; a < cars.length; a++) for (let b = a + 1; b < cars.length; b++) {
     const A = cars[a], B = cars[b];
+    if (A.removed || B.removed) continue;
     const dx = B.x - A.x, dz = B.z - A.z;
     if (Math.abs(dx) > 6 || Math.abs(dz) > 6) continue;
     // zwei Kreise pro Auto (vorne/hinten)
@@ -261,7 +265,7 @@ function collideCars(cars) {
           const mx = (ax + bx) / 2, mz = (az + bz) / 2, amt = (-rvn - 3) / 90;
           const loc = c => { const fx = -Math.sin(c.h), fz = -Math.cos(c.h); const dx = mx - c.x, dz = mz - c.z; return [dx * -fz + dz * fx, -(dx * fx + dz * fz)]; };
           const la = loc(A), lb = loc(B);
-          if (-rvn > 11) { hurt(A, amt, la[0], la[1]); hurt(B, amt, lb[0], lb[1]); }
+          if (-rvn > 14) { hurt(A, amt, la[0], la[1]); hurt(B, amt, lb[0], lb[1]); }
           const tA = (mz - A.z) * (-ex * j) - (mx - A.x) * (-ez * j), tB = (mz - B.z) * (ex * j) - (mx - B.x) * (ez * j);
           A.spin += clamp(tA * 0.07, -2, 2); B.spin += clamp(tB * 0.07, -2, 2);
         }
@@ -303,11 +307,13 @@ function aiControl(c, ai, tr, cars, dt, time, rubber) {
   let offT = ai.offBase + Math.sin(time * 0.35 + ai.wander) * 1.2;
   let capSpeed = Infinity;
   for (const o of cars) {
-    if (o === c || o.finished && o.isPlayer) continue;
+    if (o === c || o.removed || o.finished && o.isPlayer) continue;
     let dp = o.prog - c.prog;
-    if (dp > 0 && dp < 30) {
+    const obst = o.dead || o.vf < 6;
+    if (dp > 0 && dp < (obst ? 35 + Math.max(0, vf) * 1.3 : 30)) {
       const dl = o.d - c.d;
-      if (Math.abs(dl) < 3.0) {
+      if (obst && Math.abs(dl) < 3.6 && dp > 4) capSpeed = Math.min(capSpeed, Math.max(6, Math.sqrt(2 * 11 * Math.max(0, dp - 7))));
+      if (Math.abs(dl) < (obst ? 3.8 : 3.0)) {
         const room = tr.halfW - 2.2;
         let goal = dl > 0 ? o.d - 3.4 : o.d + 3.4;
         if (Math.abs(goal) > room) goal = o.d > 0 ? o.d - 3.4 : o.d + 3.4;

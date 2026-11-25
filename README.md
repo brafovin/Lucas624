@@ -2,7 +2,7 @@
 
 `index.html` im Browser öffnen (funktioniert offline, Three.js liegt bei).
 
-- **Steuerung:** W Gas · S Bremse/Rückwärts · A/D Lenken (auch Pfeiltasten) · C Kamera · R zurücksetzen · M Ton · Esc Pause
+- **Steuerung:** W Gas · S Bremse/Rückwärts · A/D Lenken (auch Pfeiltasten) · Leertaste Driften · C Kamera · R zurücksetzen · M Ton · Esc Pause
 - **4 Strecken** (alle fahrbar mit Bots; Details beim Überfahren im Menü): Green Valley GP (Tag), Neon City Circuit (Nacht), Sunset Desert Speedway (Sonnenuntergang), Port Azur GP (von Monaco inspiriert: Hafen, Kasino, Haarnadel, Tunnel)
 - **Einstellungen** (Menü oben rechts): Anzahl der Bots (1–15), Grafikqualität (Niedrig–Ultra), Sichtfeld, Auto-Qualität, Ton.
 - **Bot-Schwierigkeit:** Leicht / Mittel / Schwer (mehr Preisgeld, schnellere Bots, schlechterer Startplatz)
