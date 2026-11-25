@@ -467,7 +467,7 @@ function buildRaceScene(trackIdx) {
   chk.rotation.x = -Math.PI / 2; chk.position.y = 0.05; sl.add(chk);
   // Startaufstellung
   const slotM = new T.MeshBasicMaterial({ color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
-  for (let k = 0; k < 8; k++) {
+  for (let k = 0; k < 12; k++) {
     const row = Math.floor(k / 2), side = k % 2 ? 1 : -1, back = 10 + row * 9.5 + (k % 2 ? 4 : 0);
     const l = new T.Mesh(new T.PlaneGeometry(2.6, 0.2), slotM); l.rotation.x = -Math.PI / 2; l.position.set(side * 2.8, 0.05, back - 3.5); sl.add(l);
     const l2 = new T.Mesh(new T.PlaneGeometry(0.2, 1.4), slotM); l2.rotation.x = -Math.PI / 2; l2.position.set(side * 2.8 - 1.3, 0.05, back - 2.8); sl.add(l2);
@@ -857,7 +857,7 @@ function renderMenu() {
   Object.values(DIFFS).forEach(d => { const b = document.createElement('button'); b.textContent = d.label; if (d.id === selDiff) b.className = 'sel'; b.onclick = () => { selDiff = d.id; save.diff = d.id; persist(); renderMenu(); }; dl.appendChild(b); });
   const D = DIFFS[selDiff];
   const pr = PRIZES.map((p, i) => `P${i + 1}: <b>${fmtMoney(Math.round(p * D.prize / 50) * 50)}</b>`).join(' · ');
-  $('diffInfo').innerHTML = `Preisgeld bei Platz 1–3:<br>${pr}<br><span style="color:#8b97ad">Ab Platz 4 gibt es kein Geld. Startplatz: ${selDiff === 'easy' ? 4 : selDiff === 'medium' ? 6 : 8}.</span>`;
+  $('diffInfo').innerHTML = `Preisgeld bei Platz 1–3:<br>${pr}<br><span style="color:#8b97ad">Ab Platz 4 gibt es kein Geld. Startplatz: ${selDiff === 'easy' ? 6 : selDiff === 'medium' ? 9 : 12} von 12.</span>`;
   // Garage
   const cl = $('carList'); cl.innerHTML = '';
   const mx = { top: 104, accel: 19, grip: 35, brake: 39 };
@@ -897,12 +897,12 @@ function initRace() {
   raceScene = buildRaceScene(selTrack);
   const { scene, tr, cfg } = raceScene;
   const D = DIFFS[selDiff], pSpec = CARS.find(c => c.id === save.car);
-  const cars = [], playerSlot = { easy: 3, medium: 5, hard: 7 }[selDiff];
-  const botSlots = []; for (let k = 0; k < 8; k++) if (k !== playerSlot) botSlots.push(k);
+  const cars = [], playerSlot = { easy: 5, medium: 8, hard: 11 }[selDiff];
+  const botSlots = []; for (let k = 0; k < 12; k++) if (k !== playerSlot) botSlots.push(k);
   const mkCar = (slot, car, ai) => {
     const row = Math.floor(slot / 2), side = slot % 2 ? 2.8 : -2.8, back = 10 + row * 9.5 + (slot % 2 ? 4 : 0);
     C.placeCar(car, tr, tr.L - back, side, -back);
-    car.slot = slot; car.lapIdx = -1; car.model = makeCarModel({ color: car.color, accent: car.accent, number: car.isPlayer ? 1 : [3, 5, 7, 11, 14, 16, 23, 44, 55, 77][slot % 10] });
+    car.slot = slot; car.lapIdx = -1; car.model = makeCarModel({ color: car.color, accent: car.accent, number: car.isPlayer ? 1 : [3, 5, 7, 11, 14, 16, 23, 44, 55, 77, 88, 99][slot % 12] });
     scene.add(car.model.group); car.model.group.position.set(car.x, 0, car.z); car.model.group.rotation.y = car.h;
     car.model.driver.visible = !car.isPlayer; car.model.halo.visible = !car.isPlayer;
     if (ai) { car.ai = ai; car.ai.offBase = side * 0.45; car.ai.off = side; }
