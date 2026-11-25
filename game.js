@@ -528,27 +528,24 @@ function carToWorld(c, lx, ly, lz) { const cs = Math.cos(c.h), sn = Math.sin(c.h
 function sparks(x, y, z, c, n) {
   for (let i = 0; i < n; i++) FX.spawn('glow', x, y, z, c.vx * 0.3 + rnd(-6, 6), rnd(1, 7), c.vz * 0.3 + rnd(-6, 6), rnd(0.3, 0.8), rnd(0.18, 0.4), 0, Math.random() < 0.5 ? 0xffc040 : 0xff7a20, 1, 22);
 }
+const PART_NAMES = { fw: 'FRONTFLÜGEL', rw: 'HECKFLÜGEL' };
 function handleImpact(c) {
-  const im = c.impact; if (!im) return; c.impact = null;
-  const m = c.model, sev = im.sev, P = carToWorld(c, im.x, 0.35, im.z);
-  sparks(P[0], P[1], P[2], c, 8 + Math.round(sev * 24));
-  for (let i = 0; i < 4; i++) FX.spawn('smoke', P[0], 0.5, P[2], rnd(-2, 2), rnd(1, 3), rnd(-2, 2), rnd(0.8, 1.6), 0.8, 2.5, 0x8a8a8a, 0.55, 0);
-  // Verformung
-  const front = im.z < -0.8, rear = im.z > 0.8;
-  if (front) { m.parts.nose.rotation.y += rnd(-1, 1) * sev * 0.35; m.parts.nose.rotation.z += rnd(-1, 1) * sev * 0.12; m.parts.nose.position.x += rnd(-1, 1) * sev * 0.08; }
-  if (rear) { m.parts.eng.rotation.y += rnd(-1, 1) * sev * 0.12; }
-  if (Math.abs(im.x) > 0.4) { const sp = m.parts.sps[im.x > 0 ? 1 : 0]; sp.scale.x *= 1 - sev * 0.22; sp.rotation.z += (im.x > 0 ? -1 : 1) * sev * 0.25; sp.position.x -= Math.sign(im.x) * sev * 0.08; }
-  if (sev > 0.18 && front && !m.fwGone) { m.fwGone = true; detachPart(c, m.fwing, false); c.pull += c.pullSign * 0.04; }
-  if (sev > 0.18 && rear && !m.rwGone) { m.rwGone = true; detachPart(c, m.rwing, false); c.pull += c.pullSign * 0.03; }
-  if (sev > 0.45 && Math.abs(im.x) > 0.4) {
-    const w = m.wheels[(im.z < 0 ? 0 : 2) + (im.x > 0 ? 1 : 0)];
-    if (!w.gone) { w.gone = true; detachPart(c, w.pivot, true); c.pull += c.pullSign * 0.05; c.dmg = Math.min(1, c.dmg + 0.1); }
-  }
-  // Verrußen
-  m.body.color.copy(m.bodyBase).lerp(new T.Color(0x151515), c.dmg * 0.6);
-  if (c.isPlayer) {
-    if (c.dmg >= 0.99 && !race.warned2) { race.warned2 = true; showBanner('TOTALSCHADEN!', 1800); }
-    else if (c.dmg > 0.5 && !race.warned1) { race.warned1 = true; showBanner('SCHWERER SCHADEN', 1500); }
+  const m = c.model;
+  while (c.impacts.length) {
+    const im = c.impacts.shift(), sev = im.sev, P = carToWorld(c, im.x, 0.35, im.z);
+    sparks(P[0], P[1], P[2], c, 10 + Math.round(sev * 24));
+    for (let i = 0; i < 4; i++) FX.spawn('smoke', P[0], 0.5, P[2], rnd(-2, 2), rnd(1, 3), rnd(-2, 2), rnd(0.8, 1.6), 0.8, 2.5, 0x8a8a8a, 0.55, 0);
+    // Verformung der Karosserie
+    if (im.z < -0.8) { m.parts.nose.rotation.y += rnd(-1, 1) * sev * 0.35; m.parts.nose.position.x += rnd(-1, 1) * sev * 0.08; }
+    if (im.z > 0.8) m.parts.eng.rotation.y += rnd(-1, 1) * sev * 0.12;
+    if (Math.abs(im.x) > 0.4) { const sp = m.parts.sps[im.x > 0 ? 1 : 0]; sp.scale.x *= 1 - sev * 0.2; sp.position.x -= Math.sign(im.x) * sev * 0.08; }
+    // getroffenes Teil fliegt ab
+    if (im.lost !== null && im.lost !== undefined) {
+      if (typeof im.lost === 'number') { const w = m.wheels[im.lost]; w.gone = true; detachPart(c, w.pivot, true); }
+      else detachPart(c, im.lost === 'fw' ? m.fwing : m.rwing, false);
+      if (c.isPlayer) showBanner(typeof im.lost === 'number' ? 'REIFEN WEG – AUSGESCHIEDEN!' : PART_NAMES[im.lost] + ' VERLOREN', 2200);
+    }
+    m.body.color.copy(m.bodyBase).lerp(new T.Color(0x151515), Math.min(1, c.dmg) * 0.6);
   }
 }
 function emitDamageFx(c, dt) {
@@ -838,7 +835,7 @@ function stepRace(dt) {
         showBanner('ZIEL!', 2000);
       }
     }
-    if (c.impact) handleImpact(c);
+    if (c.impacts.length) handleImpact(c);
     if (c.hit > 0) { if (c.isPlayer) { R.shake = Math.max(R.shake, c.hit); Sound.crash(c.hit); $('flash').style.opacity = String(Math.min(0.35, c.hit * 0.5)); setTimeout(() => $('flash').style.opacity = '0', 90); } c.hit = 0; }
   }
   // Falsche Richtung / Hängenbleiben
@@ -847,17 +844,18 @@ function stepRace(dt) {
     R.wrongT = (dh > 2.2 && p.vf > 3) || (dh > 2.2 && Math.abs(p.vf) < 3) ? R.wrongT + dt : 0;
     if (R.wrongT > 1.5) { showBanner('FALSCHE RICHTUNG – R drücken', 600); }
   }
+  if (p.dead && R.phase === 'race' && !p.finished) { R.deadT = (R.deadT || 0) + dt; if (R.deadT > 3.5) { R.phase = 'done'; R.dnf = true; R.resultT = 0.01; } }
   if (R.resultT > 0) { R.resultT -= dt; if (R.resultT <= 0) showResult(); }
 }
 
 function showResult() {
-  const R = race, rk = ranking(), pos = R.finishOrder.indexOf(R.player) + 1;
+  const R = race, rk = ranking(), pos = R.dnf ? 99 : R.finishOrder.indexOf(R.player) + 1;
   const D = DIFFS[selDiff];
   let prize = 0; if (pos >= 1 && pos <= 3) prize = Math.round(PRIZES[pos - 1] * D.prize / 50) * 50;
   save.money += prize; persist();
-  const rows = rk.map((c, i) => `<tr class="${c.isPlayer ? 'me' : ''}"><td>${i + 1}</td><td>${c.name}</td><td>${c.finished ? fmtTime(c.finishTime) : 'unterwegs'}</td></tr>`).join('');
-  const head = pos <= 3 ? `<h1 class="win">${['🏆 SIEG!', 'PLATZ 2', 'PLATZ 3'][pos - 1]}</h1>` : `<h1 class="lose">PLATZ ${pos}</h1>`;
-  const body = prize > 0 ? `<div class="big">Podium geschafft – du erhältst</div><div class="prize">+ ${fmtMoney(prize)}</div>` : `<div class="big">Kein Podium – für Preisgeld brauchst du mindestens Platz 3.</div>`;
+  const rows = rk.map((c, i) => `<tr class="${c.isPlayer ? 'me' : ''}"><td>${i + 1}</td><td>${c.name}</td><td>${c.finished ? fmtTime(c.finishTime) : c.dead ? 'ausgeschieden' : 'unterwegs'}</td></tr>`).join('');
+  const head = R.dnf ? '<h1 class="lose">AUSGESCHIEDEN</h1>' : pos <= 3 ? `<h1 class="win">${['🏆 SIEG!', 'PLATZ 2', 'PLATZ 3'][pos - 1]}</h1>` : `<h1 class="lose">PLATZ ${pos}</h1>`;
+  const body = prize > 0 ? `<div class="big">Podium geschafft – du erhältst</div><div class="prize">+ ${fmtMoney(prize)}</div>` : R.dnf ? `<div class="big">Ein Reifen ist abgerissen – du kannst nicht weiterfahren.</div>` : `<div class="big">Kein Podium – für Preisgeld brauchst du mindestens Platz 3.</div>`;
   $('resultBox').innerHTML = `${head}${body}<table>${rows}</table><div class="big" style="font-size:15px">Kontostand: <b style="color:#ffd54a">${fmtMoney(save.money)}</b></div><div class="btns"><button class="pri" id="rAgain">Nochmal fahren</button><button id="rMenu">Menü / Garage</button></div>`;
   $('result').classList.remove('hidden');
   $('rAgain').onclick = () => startRace(); $('rMenu').onclick = () => toMenu();
@@ -931,7 +929,7 @@ function updateHud(R, p, speed) {
   const on = Math.round(R.rpm * 18), segs = $('rpm').children;
   if (hudCache.rpmOn !== on) { hudCache.rpmOn = on; for (let i = 0; i < segs.length; i++) segs[i].className = i < on ? 'on' + (i > 14 ? ' r' : i > 10 ? ' y' : '') : ''; }
   setHud('timeTxt', fmtTime(Math.max(0, R.time)));
-  const dp = Math.round(p.dmg * 100); setHud('dmgTxt', dp + '%');
+  const dp = p.dead ? 100 : Math.min(95, (p.lost.fw ? 35 : 0) + (p.lost.rw ? 35 : 0) + Math.round(p.dmg * 25)); setHud('dmgTxt', p.dead ? 'AUS' : dp + '%');
   if (hudCache.dmgW !== dp) { hudCache.dmgW = dp; const b = $('dmgBar'); b.style.width = dp + '%'; b.style.background = dp > 66 ? '#ff3b3b' : dp > 33 ? '#ffd54a' : '#3ddc84'; }
   $('vig').style.opacity = String(0.35 + Math.min(0.55, speed / 140));
   let h = '';
