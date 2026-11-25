@@ -16,10 +16,15 @@ const TRACKS = [
   { id: 'desert', name: 'Sunset Desert Speedway', theme: 'sunset', themeLabel: 'Sonnenuntergang', laps: 2, width: 18, wall: 12, kerb: 1.8, grass: true,
     desc: 'Sehr schnelle Wüstenstrecke mit riesigen Kurven und einer engen Spitzkehre.',
     pts: [[0,0],[500,0],[900,0],[1150,-100],[1250,-350],[1100,-550],[850,-620],[700,-520],[600,-380],[450,-330],[300,-430],[200,-600],[-50,-700],[-300,-600],[-400,-400],[-300,-200],[-150,-80]] }
+,
+  { id: 'monaco', name: 'Port Azur GP', theme: 'harbor', themeLabel: 'Hafenstadt', laps: 3, width: 11, wall: 2.6, kerb: 0.9, grass: false, start: [0, 0], scale: 1.5,
+    tunnel: { x0: -45, x1: 105, z0: -100, z1: -60 },
+    desc: 'Von Monaco inspiriert: Hafenstraße, Kasino-Kurve, enge Haarnadel, Tunnel und Schikane am Pool.',
+    pts: [[0,0],[130,2],[260,0],[330,-12],[362,-48],[356,-95],[318,-128],[250,-146],[170,-150],[110,-158],[50,-142],[-10,-148],[-80,-140],[-120,-140],[-160,-125],[-170,-100],[-150,-80],[-110,-78],[-60,-75],[0,-80],[60,-85],[110,-90],[135,-90],[155,-100],[175,-84],[195,-92],[225,-86],[242,-64],[225,-42],[195,-38],[150,-36],[125,-48],[95,-30],[65,-46],[35,-32],[-10,-40],[-60,-40],[-95,-38],[-118,-30],[-122,-14],[-105,-2],[-70,2],[-30,0]] }
 ];
 
 function buildTrack(cfg) {
-  const P = cfg.pts, n = P.length, dense = [];
+  const sc0 = cfg.scale || 1, P = cfg.pts.map(q => [q[0] * sc0, q[1] * sc0]), n = P.length, dense = [];
   for (let i = 0; i < n; i++) {
     const p0 = P[(i - 1 + n) % n], p1 = P[i], p2 = P[(i + 1) % n], p3 = P[(i + 2) % n];
     for (let k = 0; k < 60; k++) {
@@ -54,7 +59,8 @@ function buildTrack(cfg) {
   for (let i = 0; i < N; i++) { let s = 0; for (let k = -3; k <= 3; k++) s += raw[(i + k + N) % N]; curv[i] = s / 7; }
   // Startlinie dorthin legen, wo die Strecke am geradesten ist (Startaufstellung + Anfahrt)
   let bo = 0, bs = 1e9;
-  for (let o = 0; o < N; o++) {
+  if (cfg.start) { let bd = 1e18; for (let i = 0; i < N; i++) { const d = (px[i] - cfg.start[0] * sc0) ** 2 + (pz[i] - cfg.start[1] * sc0) ** 2; if (d < bd) { bd = d; bo = i; } } bs = 0; }
+  else for (let o = 0; o < N; o++) {
     let m = 0;
     for (let k = -26; k <= 10; k++) m = Math.max(m, Math.abs(curv[(o + k + N) % N]));
     if (m < bs) { bs = m; bo = o; }
@@ -276,7 +282,7 @@ function makeAI(stats, tr, skill) {
     if (k * R < 0.97) vm = Math.min(vm, Math.sqrt(g0 * R / (1 - k * R)));
     v[i] = vm * skill;
   }
-  const bd = stats.brake * 0.62;
+  const bd = stats.brake * 0.5;
   for (let pass = 0; pass < 3; pass++)
     for (let i = N * 2 - 1; i >= 0; i--) {
       const a = i % N, b = (i + 1) % N;
@@ -299,14 +305,14 @@ function aiControl(c, ai, tr, cars, dt, time, rubber) {
   for (const o of cars) {
     if (o === c || o.finished && o.isPlayer) continue;
     let dp = o.prog - c.prog;
-    if (dp > 0 && dp < 22) {
+    if (dp > 0 && dp < 30) {
       const dl = o.d - c.d;
       if (Math.abs(dl) < 3.0) {
         const room = tr.halfW - 2.2;
         let goal = dl > 0 ? o.d - 3.4 : o.d + 3.4;
         if (Math.abs(goal) > room) goal = o.d > 0 ? o.d - 3.4 : o.d + 3.4;
         offT = clamp(goal, -room, room);
-        if (dp < 7 && Math.abs(dl) < 2.0) capSpeed = Math.min(capSpeed, Math.max(o.dead ? 5 : 10, o.vf * 0.98));
+        if (dp < 5 + Math.max(0, vf) * 0.14 && Math.abs(dl) < 2.2) capSpeed = Math.min(capSpeed, Math.max(o.dead ? 5 : 10, o.vf * 0.98));
       }
     }
   }

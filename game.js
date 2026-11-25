@@ -69,7 +69,7 @@ function texKerb() {
 }
 function texGround(kind) {
   const key = 'g' + kind; if (TEX[key]) return TEX[key];
-  const base = { grass: '#3f7d33', sand: '#c79a5e', pave: '#2a2c33' }[kind];
+  const base = { grass: '#3f7d33', sand: '#c79a5e', pave: '#2a2c33', quay: '#8d8c88' }[kind];
   const t = canvasTex(512, 512, (g, w, h) => {
     g.fillStyle = base; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? '0,0,0' : '255,255,255'},${rnd(.02, .07)})`; g.beginPath(); g.arc(rnd(0, w), rnd(0, h), rnd(4, 26), 0, 7); g.fill(); }
@@ -113,6 +113,18 @@ function texWindows() {
     g.globalAlpha = 1;
   }, true));
 }
+function texWindowsDay() {
+  return TEX.winDay || (TEX.winDay = canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#f4f0e6'; g.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 32) for (let x = 0; x < w; x += 32) {
+      g.fillStyle = '#26354d'; g.fillRect(x + 9, y + 7, 14, 19);
+      g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(x + 9, y + 7, 14, 5);
+      g.fillStyle = '#5c7d58'; g.fillRect(x + 3, y + 7, 5, 19); g.fillRect(x + 24, y + 7, 5, 19);
+      g.fillStyle = '#d8d2c4'; g.fillRect(x + 7, y + 26, 18, 3);
+    }
+    addNoise(g, w, h, 12);
+  }, true));
+}
 function texNeon(text, color) {
   return canvasTex(512, 160, (g, w, h) => {
     g.fillStyle = '#05060a'; g.fillRect(0, 0, w, h);
@@ -132,6 +144,7 @@ function texSoft() {
 const THEMES = {
   day:    { top: 0x2c6bd6, mid: 0xa9d0f5, bot: 0x7e8f78, sun: [0.45, 0.62, 0.35], sunCol: 0xfff2cf, fog: 0xaed0f0, fogNear: 220, fogFar: 1900, hemi: [0xc2dcff, 0x4d5c3c, 1.05], sunI: 3.2, sunC: 0xfff0d6, exp: 1.0, ground: 'grass' },
   night:  { top: 0x02030a, mid: 0x14204a, bot: 0x090c18, sun: [-0.4, 0.55, -0.5], sunCol: 0xa8c0ff, fog: 0x0b1226, fogNear: 50, fogFar: 950, hemi: [0x3c4c8c, 0x0a0a14, 0.75], sunI: 0.9, sunC: 0x86a2ff, exp: 1.15, ground: 'pave' },
+  harbor: { top: 0x2a78d0, mid: 0xbfdcf2, bot: 0x6f8fa8, sun: [0.35, 0.58, 0.55], sunCol: 0xfff3d6, fog: 0xbcd8ee, fogNear: 260, fogFar: 2300, hemi: [0xcfe4ff, 0x8a8478, 1.1], sunI: 3.3, sunC: 0xfff1d8, exp: 1.0, ground: 'quay' },
   sunset: { top: 0x1f2b5c, mid: 0xff8f52, bot: 0x7a3d2c, sun: [0.8, 0.17, 0.4], sunCol: 0xffb464, fog: 0xe89868, fogNear: 220, fogFar: 2200, hemi: [0xffb98a, 0x6a3a22, 0.95], sunI: 3.6, sunC: 0xffa860, exp: 1.0, ground: 'sand' }
 };
 function skyMaterial(th) {
@@ -251,6 +264,24 @@ function ribbon(tr, offA, offB, yA, yB, vLen, uMode) {
   g.setIndex(idx); g.computeVertexNormals();
   return g;
 }
+function ribbonSeg(tr, offA, offB, y, i0, i1, vLen) {
+  const N = tr.N, pos = [], uv = [], idx = [];
+  for (let i = i0; i <= i1; i++) {
+    const k = i % N, v = (i - i0) * tr.ds / vLen;
+    pos.push(tr.px[k] + tr.rx[k] * offA, y, tr.pz[k] + tr.rz[k] * offA, tr.px[k] + tr.rx[k] * offB, y, tr.pz[k] + tr.rz[k] * offB); uv.push(0, v, 1, v);
+    if (i < i1) { const a = (i - i0) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  }
+  const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+function wallSeg(tr, off, h, i0, i1, vLen) {
+  const N = tr.N, pos = [], uv = [], idx = [];
+  for (let i = i0; i <= i1; i++) {
+    const k = i % N, x = tr.px[k] + tr.rx[k] * off, z = tr.pz[k] + tr.rz[k] * off, u = (i - i0) * tr.ds / vLen;
+    pos.push(x, 0, z, x, h, z); uv.push(u, 0, u, 1);
+    if (i < i1) { const a = (i - i0) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  }
+  const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
 function wallGeo(tr, off, h, sign, vLen) {
   // senkrechte Bande bei Querversatz off (sign = Seite)
   const N = tr.N, pos = [], uv = [], idx = [], rep = Math.max(1, Math.round(tr.L / vLen));
@@ -302,9 +333,17 @@ function buildRaceScene(trackIdx) {
   scene.add(sun, sun.target);
 
   // Boden
-  const gTex = texGround(th.ground).clone(); gTex.needsUpdate = true; gTex.repeat.set(700, 700);
-  const ground = new T.Mesh(new T.PlaneGeometry(9000, 9000), new T.MeshStandardMaterial({ map: gTex, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 }));
+  const gTex = texGround(th.ground).clone(); gTex.needsUpdate = true; const harbor = cfg.theme === 'harbor';
+  gTex.repeat.set(700, harbor ? 350 : 700);
+  const ground = new T.Mesh(new T.PlaneGeometry(9000, harbor ? 4500 : 9000), new T.MeshStandardMaterial({ map: gTex, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+  if (harbor) {
+    ground.position.set(0, 0, 14 - 2250);
+    const sea = new T.Mesh(new T.PlaneGeometry(9000, 4500), new T.MeshStandardMaterial({ color: 0x1b78b0, roughness: 0.07, metalness: 0.75 }));
+    sea.rotation.x = -Math.PI / 2; sea.position.set(0, -1.2, 14 + 2250); scene.add(sea);
+    const quay = new T.Mesh(new T.PlaneGeometry(9000, 1.2), new T.MeshStandardMaterial({ color: 0x77757a, roughness: 0.9 }));
+    quay.position.set(0, -0.6, 14); scene.add(quay);
+  }
 
   // Strecke
   const aTex = texAsphalt();
@@ -365,8 +404,9 @@ function buildRaceScene(trackIdx) {
     for (const z of [-len / 2, 0, len / 2]) { const pl = new T.Mesh(new T.BoxGeometry(0.4, 11, 0.4), concrete); pl.position.set(sg * (base + 13.5), 5.5, z); grp.add(pl); }
   }
   const standOff = cfg.grass ? 0 : 3;
-  stand(tr.L - 60, 1, 60); stand(tr.L - 60, -1, 60); stand(70, 1, 50); stand(70, -1, 50);
-  if (tr.L > 2800) { stand(tr.L * 0.45, 1, 50); stand(tr.L * 0.45, -1, 40); stand(tr.L * 0.7, 1, 40); }
+  if (harbor) { stand(tr.L - 70, -1, 60); stand(60, -1, 50); }
+  else { stand(tr.L - 60, 1, 60); stand(tr.L - 60, -1, 60); stand(70, 1, 50); stand(70, -1, 50); }
+  if (tr.L > 2800 && !harbor) { stand(tr.L * 0.45, 1, 50); stand(tr.L * 0.45, -1, 40); stand(tr.L * 0.7, 1, 40); }
 
   // Zufällige Platzierung abseits der Strecke
   function farFromTrack(x, z, minD) {
@@ -419,6 +459,67 @@ function buildRaceScene(trackIdx) {
     for (let i = 0; i < 20; i++) { const a = rnd(0, 6.283), r = rnd(700, 1500); const rr = rnd(60, 150), h = rnd(80, 220); const m = new T.Mesh(new T.CylinderGeometry(rr * 0.75, rr, h, 9), mm); m.position.set(600 + Math.cos(a) * r, h / 2 - 2, -300 + Math.sin(a) * r); scene.add(m); }
     const dm = new T.MeshStandardMaterial({ color: 0xd6a566, roughness: 1, flatShading: true });
     for (let i = 0; i < 24; i++) { const a = i / 24 * 6.283, r = rnd(1100, 1700); const h = new T.Mesh(new T.SphereGeometry(1, 10, 6), dm); h.scale.set(rnd(200, 400), rnd(30, 90), rnd(200, 400)); h.position.set(600 + Math.cos(a) * r, 0, -300 + Math.sin(a) * r); scene.add(h); }
+  } else if (harbor) {
+    const winD = texWindowsDay(), pastel = [0xf2d8b0, 0xf0c9a0, 0xe9b8a0, 0xf5e6c8, 0xd9c4a8, 0xeedbb0, 0xe3a98f, 0xf4efe0, 0xe8c27a];
+    const roofM = new T.MeshStandardMaterial({ color: 0xb5553a, roughness: 0.9 });
+    scatter(230, 2, 190, 9000).filter(q => q[1] < 6).forEach(([x, z]) => {
+      const w = rnd(14, 30), d = rnd(14, 30), h = rnd(14, 42) * (1 + clamp(-z / 500, 0, 1));
+      if (!farFromTrack(x, z, tr.halfW + tr.wall + 3 + Math.max(w, d) * 0.55)) return;
+      const geo = new T.BoxGeometry(w, h, d), uv = geo.attributes.uv;
+      for (let i = 0; i < uv.count; i++) { const face = Math.floor(i / 4), sx = face < 2 ? d : w; if (face < 2 || face > 3) uv.setXY(i, uv.getX(i) * sx / 30, uv.getY(i) * h / 30); else uv.setXY(i, 0.02, 0.02); }
+      const b = new T.Mesh(geo, new T.MeshStandardMaterial({ color: pastel[(Math.random() * pastel.length) | 0], map: winD, roughness: 0.85 }));
+      const ry = rnd(0, 0.35); b.position.set(x, h / 2, z); b.rotation.y = ry; b.castShadow = true; b.receiveShadow = true; scene.add(b);
+      const roof = new T.Mesh(new T.BoxGeometry(w + 1.2, 1, d + 1.2), roofM); roof.position.set(x, h + 0.5, z); roof.rotation.y = ry; scene.add(roof);
+    });
+    // Palmen
+    const pp = scatter(110, 4, 50, 3000).filter(q => q[1] < 6), pn = pp.length;
+    const trunkI = new T.InstancedMesh(new T.CylinderGeometry(0.22, 0.4, 8, 6), new T.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 1 }), pn);
+    const crownI = new T.InstancedMesh(new T.SphereGeometry(3, 8, 6), new T.MeshStandardMaterial({ color: 0x2f7d3a, roughness: 0.9, flatShading: true }), pn);
+    pp.forEach(([x, z], i) => { const sc2 = rnd(0.8, 1.4); dummy.rotation.set(0, 0, 0); dummy.scale.set(sc2, sc2, sc2); dummy.position.set(x, 4 * sc2, z); dummy.updateMatrix(); trunkI.setMatrixAt(i, dummy.matrix); dummy.scale.set(sc2, sc2 * 0.35, sc2); dummy.position.set(x, 8.3 * sc2, z); dummy.updateMatrix(); crownI.setMatrixAt(i, dummy.matrix); });
+    trunkI.castShadow = crownI.castShadow = true; scene.add(trunkI, crownI);
+    // Jachten im Hafen
+    const yn = 46, hullI = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.1 }), yn);
+    const cabI = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshStandardMaterial({ color: 0xf2f4f8, roughness: 0.4 }), yn);
+    const mastI = new T.InstancedMesh(new T.CylinderGeometry(0.15, 0.2, 1, 5), new T.MeshStandardMaterial({ color: 0xb8bcc4, metalness: 0.8, roughness: 0.3 }), yn);
+    const hc = new T.Color();
+    for (let i = 0; i < yn; i++) {
+      const L = rnd(14, 46), x = rnd(-300, 480), z = 36 + (i % 4) * 34 + rnd(0, 12), rot = Math.PI / 2 + rnd(-0.08, 0.08), hh = L * 0.16;
+      dummy.rotation.set(0, rot, 0); dummy.scale.set(L, hh, L * 0.27); dummy.position.set(x, -0.7 + hh / 2, z); dummy.updateMatrix(); hullI.setMatrixAt(i, dummy.matrix);
+      hc.setHex([0xffffff, 0xffffff, 0xf3ead8, 0x1d2b4a, 0xdcdcdc][i % 5]); hullI.setColorAt(i, hc);
+      dummy.scale.set(L * 0.55, hh * 1.1, L * 0.2); dummy.position.set(x, -0.7 + hh + hh * 0.55, z); dummy.updateMatrix(); cabI.setMatrixAt(i, dummy.matrix);
+      const mh = L * rnd(0.5, 0.9); dummy.rotation.set(0, 0, 0); dummy.scale.set(1, mh, 1); dummy.position.set(x, -0.7 + hh + mh / 2, z); dummy.updateMatrix(); mastI.setMatrixAt(i, dummy.matrix);
+    }
+    hullI.castShadow = cabI.castShadow = true; scene.add(hullI, cabI, mastI);
+    // Kasino
+    const cas = new T.Group(), cream = new T.MeshStandardMaterial({ color: 0xf0e2c4, roughness: 0.8 }), domeM = new T.MeshStandardMaterial({ color: 0x4f9a86, roughness: 0.5, metalness: 0.4 });
+    const cb = new T.Mesh(new T.BoxGeometry(64, 20, 34), cream); cb.position.y = 10; cas.add(cb);
+    const cbw = new T.Mesh(new T.BoxGeometry(64.2, 20, 34.2), new T.MeshStandardMaterial({ color: 0xffffff, map: winD, transparent: true, opacity: 0.0 })); cas.add(cbw);
+    for (const sx of [-1, 1]) { const tw = new T.Mesh(new T.BoxGeometry(8, 34, 8), cream); tw.position.set(sx * 26, 17, 14); cas.add(tw); const dm = new T.Mesh(new T.SphereGeometry(5.5, 14, 8, 0, 6.283, 0, 1.57), domeM); dm.position.set(sx * 26, 34, 14); cas.add(dm); }
+    const mid = new T.Mesh(new T.CylinderGeometry(7, 7, 6, 14), cream); mid.position.set(0, 23, 6); cas.add(mid);
+    const md = new T.Mesh(new T.SphereGeometry(7, 14, 8, 0, 6.283, 0, 1.57), domeM); md.position.set(0, 26, 6); cas.add(md);
+    cas.children.forEach(o => { o.castShadow = true; });
+    const cp = C.trackAt(tr, 0, 0); let ci = 0, cd = 1e9; for (let i = 0; i < tr.N; i++) { const d = Math.hypot(tr.px[i] - 110 * 1.5, tr.pz[i] + 158 * 1.5); if (d < cd) { cd = d; ci = i; } }
+    cas.position.set(tr.px[ci] + tr.rx[ci] * -62, 0, tr.pz[ci] + tr.rz[ci] * -62); cas.rotation.y = tr.h[ci]; scene.add(cas);
+    // ferne Berge
+    const mm = new T.MeshStandardMaterial({ color: 0x7d8f7a, roughness: 1, flatShading: true });
+    for (let i = 0; i < 16; i++) { const m = new T.Mesh(new T.SphereGeometry(1, 10, 6), mm); m.scale.set(rnd(260, 520), rnd(180, 380), rnd(220, 400)); m.position.set(-1300 + i * 190 + rnd(-60, 60), 0, rnd(-1500, -1150)); scene.add(m); }
+    // Tunnel
+    if (cfg.tunnel) {
+      const sc0 = cfg.scale || 1, t = cfg.tunnel; let i0 = -1, i1 = -1;
+      for (let i = 0; i < tr.N; i++) { const inside = tr.px[i] > t.x0 * sc0 && tr.px[i] < t.x1 * sc0 && tr.pz[i] > t.z0 * sc0 && tr.pz[i] < t.z1 * sc0 && tr.tx[i] > 0.7; if (inside) { if (i0 < 0) i0 = i; i1 = i; } }
+      if (i0 >= 0 && i1 - i0 > 4) {
+        const conc = new T.MeshStandardMaterial({ color: 0x5b5c62, roughness: 0.95, side: T.DoubleSide }), off = tr.halfW + tr.wall;
+        const roof = new T.Mesh(ribbonSeg(tr, -off - 0.6, off + 0.6, 7, i0, i1, 10), conc); roof.castShadow = true; roof.receiveShadow = true; scene.add(roof);
+        for (const sg of [-1, 1]) { const w = new T.Mesh(wallSeg(tr, off * sg, 7, i0, i1, 10), conc); w.castShadow = true; w.receiveShadow = true; scene.add(w); }
+        const lamp = new T.MeshBasicMaterial({ color: 0xffe2b0 });
+        for (const o of [-3.2, 3.2]) scene.add(new T.Mesh(ribbonSeg(tr, o - 0.3, o + 0.3, 6.92, i0, i1, 10), lamp));
+        const portal = (idx, sgn) => { const m = new T.Mesh(new T.BoxGeometry(off * 2 + 6, 6, 2), new T.MeshStandardMaterial({ color: 0x8c8a86, roughness: 0.9 })); m.position.set(tr.px[idx] - tr.tx[idx] * sgn, 10, tr.pz[idx] - tr.tz[idx] * sgn); m.rotation.y = tr.h[idx]; m.castShadow = true; scene.add(m); };
+        portal(i0, 0); portal(i1, 0);
+        // Hügel über dem Tunnel
+        const hill = new T.Mesh(new T.BoxGeometry(off * 2 + 40, 30, (i1 - i0) * tr.ds), new T.MeshStandardMaterial({ color: 0x9a9a92, roughness: 1 }));
+        const mi = (i0 + i1) >> 1; hill.position.set(tr.px[mi], 22, tr.pz[mi]); hill.rotation.y = tr.h[mi]; scene.add(hill);
+      }
+    }
   } else { // Stadt bei Nacht
     const winT = texWindows();
     const lamp = new T.MeshBasicMaterial({ color: 0xffe3a0 });
@@ -643,7 +744,7 @@ function renderMenu() {
   TRACKS.forEach((cfg, i) => {
     const tr = trackCache[i], el = document.createElement('div'); el.className = 'card' + (i === selTrack ? ' sel' : '');
     const best = save.best[cfg.id];
-    el.innerHTML = `<canvas width="168" height="128"></canvas><div class="ct"><div class="nm">${cfg.name}</div><div class="sub"><span class="tag">${(tr.L / 1000).toFixed(2)} km</span><span class="tag">${cfg.laps} Runden</span><span class="tag">${cfg.themeLabel}</span><br>${cfg.desc}${best ? '<br>Beste Runde: <b>' + fmtTime(best) + '</b>' : ''}</div></div>`;
+    el.innerHTML = `<canvas width="168" height="128"></canvas><div class="ct"><div class="nm">${cfg.name}</div><div class="sub"><span class="tag">${(tr.L / 1000).toFixed(2)} km</span><span class="tag">${cfg.laps} Runden</span><span class="tag">${cfg.themeLabel}</span>${best ? '<br>Beste Runde: <b>' + fmtTime(best) + '</b>' : ''}</div></div>`; el.title = cfg.desc;
     drawTrackPreview(el.querySelector('canvas'), tr);
     el.onclick = () => { selTrack = i; save.track = i; persist(); renderMenu(); };
     tl.appendChild(el);
