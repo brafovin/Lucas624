@@ -89,12 +89,15 @@ footer>*{pointer-events:auto}
 #rpm{display:flex;gap:3px;margin-top:8px;justify-content:flex-end}
 #rpm i{width:9px;height:14px;background:rgba(255,255,255,.18);border-radius:2px;transform:skewX(-14deg)}
 #rpm i.on{background:#3ddc84}#rpm i.on.y{background:#ffd54a}#rpm i.on.r{background:#ff3b3b}
+#dmgBox{position:absolute;left:24px;bottom:26px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:800;letter-spacing:2px;text-shadow:0 2px 8px #000}
+.dbar{width:170px;height:12px;background:rgba(255,255,255,.18);border-radius:6px;overflow:hidden}
+.dbar i{display:block;height:100%;width:0;background:#3ddc84;transition:width .2s}
 #lights{position:absolute;left:50%;top:14%;transform:translateX(-50%);display:flex;gap:16px;background:rgba(0,0,0,.65);padding:14px 22px;border-radius:14px}
 #lights i{width:46px;height:46px;border-radius:50%;background:#2a0a0a;border:3px solid #111;transition:.05s}
 #lights i.on{background:#ff1a1a;box-shadow:0 0 22px #ff1a1a}
 #banner{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);font-size:64px;font-weight:900;font-style:italic;letter-spacing:3px;text-shadow:0 4px 24px rgba(0,0,0,.8);opacity:0;transition:opacity .25s;text-align:center;white-space:nowrap}
 #banner.show{opacity:1}
-#hint{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);font-size:13px;color:#d4dcec;background:rgba(0,0,0,.45);padding:4px 14px;border-radius:14px}
+#hint{position:absolute;left:50%;bottom:70px;transform:translateX(-50%);font-size:13px;color:#d4dcec;background:rgba(0,0,0,.45);padding:4px 14px;border-radius:14px}
 
 /* ------------- Overlays ------------- */
 .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(3,5,10,.72);backdrop-filter:blur(6px)}
@@ -149,6 +152,7 @@ footer>*{pointer-events:auto}
   <div id="vig"></div><div id="flash"></div>
   <div id="posBox"><span id="posBig">8</span><span class="of">/8</span><div id="lapTxt"></div><div id="board"></div></div>
   <div id="mapBox"><canvas id="map" width="380" height="380"></canvas><div id="timeTxt">0:00.00</div><div id="lastLap"></div></div>
+  <div id="dmgBox"><span>SCHADEN</span><div class="dbar"><i id="dmgBar"></i></div><b id="dmgTxt">0%</b></div>
   <div id="speedo"><div id="gear">N</div><div id="spd">0</div><div class="unit">KM/H</div><div id="rpm"></div></div>
   <div id="lights"><i></i><i></i><i></i><i></i><i></i></div>
   <div id="banner"></div>

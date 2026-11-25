@@ -102,7 +102,7 @@ const BOT_COLORS = [[0xe8e8e8, 0xd8232a], [0x00b7c9, 0x102030], [0xff6a00, 0x111
 
 function makeCar(opts) {
   return Object.assign({
-    x: 0, z: 0, h: 0, vx: 0, vz: 0, steer: 0, yaw: 0, i: -1, s: 0, d: 0, prog: 0, lap: 0,
+    x: 0, z: 0, h: 0, vx: 0, vz: 0, steer: 0, yaw: 0, dmg: 0, spin: 0, pull: 0, pullSign: Math.random() < 0.5 ? -1 : 1, scrape: false, impact: null, i: -1, s: 0, d: 0, prog: 0, lap: 0,
     finished: false, finishTime: 0, hit: 0, vf: 0, vl: 0, onGrass: false, slip: 0, lapStart: 0, bestLap: 0,
     inp: { throttle: 0, brake: 0, steer: 0 }
   }, opts);
@@ -129,8 +129,17 @@ function trackUpdate(c, tr, init) {
   c.s = ((s % tr.L) + tr.L) % tr.L; c.i = i;
 }
 
+function hurt(c, amt, mx, mz) {
+  if (!(amt > 0.004)) return;
+  c.dmg = Math.min(1, c.dmg + amt);
+  const sev = Math.min(1, amt * 3);
+  if (!c.impact || sev > c.impact.sev) c.impact = { sev, x: mx, z: mz };
+}
+
 function stepCar(c, inp, dt, tr) {
-  const st = c.stats;
+  const dm = c.dmg, s0 = c.stats;
+  const st = dm > 0 ? { top: s0.top * (1 - 0.45 * dm), accel: s0.accel * (1 - 0.5 * dm), brake: s0.brake * (1 - 0.3 * dm), grip: s0.grip * (1 - 0.35 * dm), down: s0.down * (1 - 0.3 * dm) } : s0;
+  c.scrape = false;
   let fx = -Math.sin(c.h), fz = -Math.cos(c.h), rx = -fz, rz = fx;
   let vf = c.vx * fx + c.vz * fz, vl = c.vx * rx + c.vz * rz;
   const limEdge = tr.halfW + tr.kerb;
@@ -167,17 +176,18 @@ function stepCar(c, inp, dt, tr) {
   // Lenkung / Gierrate
   const gripLat = st.grip * surf + st.down * vf * vf;
   const maxSt = 0.44 / (1 + Math.pow(Math.abs(vf) / 18, 1.6));
-  let yaw = vf * Math.tan(c.steer * maxSt) / 3.4;
+  let yaw = vf * Math.tan(c.steer * maxSt) / 3.4 + (c.pull + c.pullSign * dm * 0.05) * clamp(vf / 30, -1, 1);
   const yawMax = gripLat / Math.max(Math.abs(vf), 3);
   yaw = clamp(yaw, -yawMax, yawMax);
-  c.h += yaw * dt;
+  c.h += (yaw + c.spin) * dt;
   c.yaw = yaw;
+  c.spin *= Math.exp(-2.2 * dt);
 
   // Geschwindigkeit in neues Achsensystem; Querschlupf abbauen
   const nfx = -Math.sin(c.h), nfz = -Math.cos(c.h), nrx = -nfz, nrz = nfx;
   const wvx = fx * vf + rx * vl, wvz = fz * vf + rz * vl;
   vf = wvx * nfx + wvz * nfz; vl = wvx * nrx + wvz * nrz;
-  const k = onGrass ? 3.2 : 9;
+  const k = (onGrass ? 3.2 : 9) / (1 + Math.abs(c.spin) * 2);
   vl *= Math.exp(-k * dt);
   c.vx = nfx * vf + nrx * vl; c.vz = nfz * vf + nrz * vl;
   c.vf = vf; c.vl = vl; c.slip = Math.abs(vl);
@@ -195,7 +205,13 @@ function stepCar(c, inp, dt, tr) {
     if (vn > 0) { c.vx -= tr.rx[i] * sg * vn * 1.15; c.vz -= tr.rz[i] * sg * vn * 1.15; }
     const sc = 1 - Math.min(0.45, 0.012 * vn + 0.06);
     c.vx *= sc; c.vz *= sc;
-    if (vn > 4) c.hit = Math.max(c.hit, Math.min(1, vn / 25));
+    c.scrape = true;
+    const dh = wrap(c.h - tr.h[i]), out = sg > 0 ? dh < 0 : dh > 0;
+    if (vn > 4) {
+      c.hit = Math.max(c.hit, Math.min(1, vn / 25));
+      c.spin += sg * (out ? 1 : -0.6) * clamp(vn * 0.06, 0, 2.4) * (0.6 + Math.random() * 0.6);
+    }
+    hurt(c, (vn - 3) / 60 + Math.abs(c.vf) * dt * 0.0006, sg * 1.0, out ? -1.6 : 1.6);
   }
 }
 
@@ -219,6 +235,12 @@ function collideCars(cars) {
           A.vx -= ex * j; A.vz -= ez * j; B.vx += ex * j; B.vz += ez * j;
           const lvl = Math.min(1, -rvn / 14);
           A.hit = Math.max(A.hit, lvl * 0.6); B.hit = Math.max(B.hit, lvl * 0.6);
+          const mx = (ax + bx) / 2, mz = (az + bz) / 2, amt = (-rvn - 3) / 90;
+          const loc = c => { const fx = -Math.sin(c.h), fz = -Math.cos(c.h); const dx = mx - c.x, dz = mz - c.z; return [dx * -fz + dz * fx, -(dx * fx + dz * fz)]; };
+          const la = loc(A), lb = loc(B);
+          hurt(A, amt, la[0], la[1]); hurt(B, amt, lb[0], lb[1]);
+          const tA = (mz - A.z) * (-ex * j) - (mx - A.x) * (-ez * j), tB = (mz - B.z) * (ex * j) - (mx - B.x) * (ez * j);
+          A.spin += clamp(tA * 0.07, -2, 2); B.spin += clamp(tB * 0.07, -2, 2);
         }
       }
     }
@@ -266,7 +288,7 @@ function aiControl(c, ai, tr, cars, dt, time, rubber) {
         let goal = dl > 0 ? o.d - 3.4 : o.d + 3.4;
         if (Math.abs(goal) > room) goal = o.d > 0 ? o.d - 3.4 : o.d + 3.4;
         offT = clamp(goal, -room, room);
-        if (dp < 7 && Math.abs(dl) < 2.0) capSpeed = Math.min(capSpeed, Math.max(10, o.vf * 0.98));
+        if (dp < 7 && Math.abs(dl) < 2.0) capSpeed = Math.min(capSpeed, Math.max(o.dmg > 0.6 ? 5 : 10, o.vf * 0.98));
       }
     }
   }
@@ -277,12 +299,15 @@ function aiControl(c, ai, tr, cars, dt, time, rubber) {
   const want = Math.atan2(-(tx - c.x), -(tz - c.z));
   const err = wrap(want - c.h);
   const steer = clamp(err * 2.1, -1, 1);
+  if (Math.abs(vf) < 1.5 && time > 6) ai.stuck = (ai.stuck || 0) + dt; else ai.stuck = 0;
+  if (ai.stuck > 1.8) { ai.rec = 1.6; ai.stuck = 0; }
+  if (ai.rec > 0) { ai.rec -= dt; return { throttle: 0, brake: 1, steer: -steer }; }
 
   const ahead = (i + Math.ceil(Math.max(0, vf) * 0.3 / ds)) % N;
   let vt = ai.vlim[ahead] * (rubber || 1);
   vt = Math.min(vt, ai.vlim[i] * (rubber || 1) + 6);
   if (Math.abs(c.d) > tr.halfW + tr.kerb) vt = Math.min(vt, 30);
-  vt *= clamp(1 - Math.abs(err) * 0.55, 0.35, 1);
+  vt *= clamp(1 - Math.abs(err) * 0.55, 0.35, 1) * (1 - 0.35 * c.dmg);
   vt = Math.min(vt, capSpeed);
   const thr = clamp((vt - vf) * 0.45, 0, 1);
   const brk = vf > vt + 1.2 ? clamp((vf - vt) * 0.25, 0, 1) : 0;
