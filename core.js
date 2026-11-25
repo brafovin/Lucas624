@@ -89,17 +89,17 @@ function nearest(tr, x, z, hint) {
 
 /* ---------------------------------------------------------------- Fahrzeuge */
 const CARS = [
-  { id: 'rookie',  name: 'Rookie RB-1',   price: 0,     top: 78,  accel: 12.0, brake: 30, grip: 23, down: 0.0034, color: 0xd8232a, accent: 0xffffff, blurb: 'Zuverlässiges Einsteigerauto.' },
-  { id: 'falcon',  name: 'Falcon F2',     price: 7500,  top: 84,  accel: 13.5, brake: 32, grip: 25, down: 0.0036, color: 0x1f6fe0, accent: 0xffd400, blurb: 'Schneller und stabiler in Kurven.' },
-  { id: 'viper',   name: 'Viper V8',      price: 18000, top: 90,  accel: 15.0, brake: 34, grip: 28, down: 0.0038, color: 0x14a85a, accent: 0x111111, blurb: 'Starker V8 mit viel Abtrieb.' },
-  { id: 'phantom', name: 'Phantom X',     price: 40000, top: 96,  accel: 17.0, brake: 36, grip: 31, down: 0.0040, color: 0x6a2bd6, accent: 0xff3df0, blurb: 'Hochleistungs-Rennwagen.' },
-  { id: 'apex',    name: 'Apex Hyper',    price: 90000, top: 104, accel: 19.0, brake: 39, grip: 35, down: 0.0043, color: 0xf5a300, accent: 0x101010, blurb: 'Das Beste vom Besten. Unschlagbar.' }
+  { id: 'rookie',  name: 'Rookie RB-1',   price: 0,     top: 78,  accel: 12.0, brake: 25.5, grip: 23, down: 0.0034, color: 0xd8232a, accent: 0xffffff, blurb: 'Zuverlässiges Einsteigerauto.' },
+  { id: 'falcon',  name: 'Falcon F2',     price: 7500,  top: 84,  accel: 13.5, brake: 27.2, grip: 25, down: 0.0036, color: 0x1f6fe0, accent: 0xffd400, blurb: 'Schneller und stabiler in Kurven.' },
+  { id: 'viper',   name: 'Viper V8',      price: 18000, top: 90,  accel: 15.0, brake: 28.9, grip: 28, down: 0.0038, color: 0x14a85a, accent: 0x111111, blurb: 'Starker V8 mit viel Abtrieb.' },
+  { id: 'phantom', name: 'Phantom X',     price: 40000, top: 96,  accel: 17.0, brake: 30.6, grip: 31, down: 0.0040, color: 0x6a2bd6, accent: 0xff3df0, blurb: 'Hochleistungs-Rennwagen.' },
+  { id: 'apex',    name: 'Apex Hyper',    price: 90000, top: 104, accel: 19.0, brake: 33.1, grip: 35, down: 0.0043, color: 0xf5a300, accent: 0x101010, blurb: 'Das Beste vom Besten. Unschlagbar.' }
 ];
 
 const DIFFS = {
-  easy:   { id: 'easy',   label: 'Leicht', skill: 0.80, prize: 1.0, car: { top: 72, accel: 10.5, brake: 28, grip: 20, down: 0.0032 } },
-  medium: { id: 'medium', label: 'Mittel', skill: 0.90, prize: 1.6, car: { top: 80, accel: 12.5, brake: 31, grip: 23.5, down: 0.0035 } },
-  hard:   { id: 'hard',   label: 'Schwer', skill: 0.985, prize: 2.6, car: { top: 88, accel: 14.5, brake: 34, grip: 27, down: 0.0038 } }
+  easy:   { id: 'easy',   label: 'Leicht', skill: 0.80, prize: 1.0, car: { top: 72, accel: 10.5, brake: 23.8, grip: 20, down: 0.0032 } },
+  medium: { id: 'medium', label: 'Mittel', skill: 0.90, prize: 1.6, car: { top: 80, accel: 12.5, brake: 26.3, grip: 23.5, down: 0.0035 } },
+  hard:   { id: 'hard',   label: 'Schwer', skill: 0.985, prize: 2.6, car: { top: 88, accel: 14.5, brake: 28.9, grip: 27, down: 0.0038 } }
 };
 const PRIZES = [4000, 2500, 1500]; // Platz 1-3
 
@@ -183,7 +183,7 @@ function stepCar(c, inp, dt, tr) {
     else a += st.accel * thr * 1.5;
   }
   if (brk > 0) {
-    if (vf > 0.6) a -= st.brake * brk * (1 + st.down * vf * vf * 0.35) * (onGrass ? 0.7 : 1);
+    if (vf > 0.6) a -= st.brake * brk * (1 + st.down * vf * vf * 0.04) * (onGrass ? 0.7 : 1);
     else if (vf > -14) a -= 10 * brk;
   }
   const sgn = vf >= 0 ? 1 : -1;
