@@ -12,3 +12,12 @@
 
 ## Texturen
 Asphalt, Gras, Sand, Pflaster, Beton, Putz und Dachziegel sind echte PBR-Texturen (Farbe + Normal-Map) von [ambientCG](https://ambientcg.com) (CC0 / Public Domain). Sie liegen als Data-URIs in `textures.js`, damit das Spiel auch offline und per Doppelklick (`file://`) läuft. Lackierung, Reifen, Carbon, Wasser und Fahrbahnmarkierungen werden prozedural erzeugt.
+
+## Ultra-Grafik
+Im Einstellungsmenü auf **Ultra** schalten (braucht eine starke Grafikkarte):
+- Post-Processing: Bloom, Umgebungsverdeckung (GTAO), 4x-MSAA, Bewegungsunschärfe, chromatische Aberration, Vignette, Filmkorn
+- Hochdetaillierte Autos (geloftete Karosserie, Flügelprofile, Halo, Fahrer, Reifen mit Schriftzug) mit Echtzeit-Spiegelungen
+- Fangzäune, Reifenstapel in Kurven, realistische Bäume, größere Schattenqualität
+- Ab **Hoch**: Wolken-Himmel, Kiesbetten, Reifenspuren, Bodendetail
+
+`three.bundle.js` enthält three.js r160 + Postprocessing und wird mit `npx esbuild build/entry.js --bundle --minify --format=iife --outfile=three.bundle.js` gebaut (Pakete `three@0.160.0`, `esbuild`).

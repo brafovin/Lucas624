@@ -27,7 +27,7 @@ const QUAL = [
   { label: 'Niedrig', pr: 1, shadow: 0, mapSize: 512 },
   { label: 'Mittel', pr: 1, shadow: 1, mapSize: 1024 },
   { label: 'Hoch', pr: Math.min(window.devicePixelRatio || 1, 1.75), shadow: 1, mapSize: 2048 },
-  { label: 'Ultra', pr: Math.min(window.devicePixelRatio || 1, 2.5), shadow: 1, mapSize: 4096 }
+  { label: 'Ultra', pr: Math.min(window.devicePixelRatio || 1, 2), shadow: 1, mapSize: 4096 }
 ];
 function applyQuality() {
   const q = QUAL[save.quality];
@@ -36,10 +36,11 @@ function applyQuality() {
   renderer.shadowMap.enabled = q.shadow > 0;
   if (raceScene && raceScene.sun) { raceScene.sun.castShadow = q.shadow > 0; raceScene.sun.shadow.mapSize.set(q.mapSize, q.mapSize); if (raceScene.sun.shadow.map) { raceScene.sun.shadow.map.dispose(); raceScene.sun.shadow.map = null; } }
   scene_materials_dirty();
+  if (typeof Post !== 'undefined') Post.resize();
 }
 function scene_materials_dirty() { [raceScene && raceScene.scene, showScene].forEach(s => s && s.traverse(o => { if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); } })); }
 const camera = new T.PerspectiveCamera(72, innerWidth / innerHeight, 0.1, 3200);
-addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); showCam.aspect = camera.aspect; showCam.updateProjectionMatrix(); });
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight, false); if (typeof Post !== 'undefined') Post.resize(); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); showCam.aspect = camera.aspect; showCam.updateProjectionMatrix(); });
 
 /* ------------------------------------------------------------ Texturen */
 function canvasTex(w, h, draw, repeat) {
@@ -203,6 +204,40 @@ function texWaterNormal() {
   })());
 }
 
+function texWire() {
+  return TEX.wire || (TEX.wire = canvasTex(64, 64, (g, w, h) => {
+    g.clearRect(0, 0, w, h); g.strokeStyle = 'rgba(190,195,200,1)'; g.lineWidth = 3.2;
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(w, h); g.moveTo(w, 0); g.lineTo(0, h); g.moveTo(-w, 0); g.lineTo(w, h * 2); g.moveTo(0, -h); g.lineTo(w * 2, h); g.stroke();
+  }, true));
+}
+function texFoliage() {
+  return TEX.foliage || (TEX.foliage = canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#4c7a38'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 1600; i++) { const l = rnd(0.25, 0.7), c = `hsla(${rnd(78, 118)},${rnd(35, 62)}%,${l * 45}%,${rnd(.35, .8)})`; g.fillStyle = c; g.save(); g.translate(rnd(0, w), rnd(0, h)); g.rotate(rnd(0, 6.28)); g.beginPath(); g.ellipse(0, 0, rnd(2, 6), rnd(1, 3), 0, 0, 7); g.fill(); g.restore(); }
+    for (let i = 0; i < 300; i++) { g.fillStyle = `rgba(10,30,5,${rnd(.1, .3)})`; g.beginPath(); g.arc(rnd(0, w), rnd(0, h), rnd(3, 9), 0, 7); g.fill(); }
+  }, true));
+}
+function mergeGeos(list) {
+  let pc = 0, ic = 0; list.forEach(g => { pc += g.attributes.position.count; ic += g.index.count; });
+  const pos = new Float32Array(pc * 3), uv = new Float32Array(pc * 2), idx = new Uint32Array(ic); let po = 0, io = 0;
+  list.forEach(g => { pos.set(g.attributes.position.array, po * 3); uv.set(g.attributes.uv.array, po * 2); for (let i = 0; i < g.index.count; i++) idx[io + i] = g.index.array[i] + po; po += g.attributes.position.count; io += g.index.count; });
+  const m = new T.BufferGeometry(); m.setAttribute('position', new T.BufferAttribute(pos, 3)); m.setAttribute('uv', new T.BufferAttribute(uv, 2)); m.setIndex(new T.BufferAttribute(idx, 1)); m.computeVertexNormals(); return m;
+}
+function noiseDisp(geo, amp, freq) {
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), l = Math.hypot(x, y, z) || 1; const n = Math.sin(x * freq + 1.3) * Math.cos(y * freq * 1.3) + Math.sin(z * freq * 0.9 + x * 0.5) * 0.7 + Math.sin((x + y + z) * freq * 2.1) * 0.35; const d = 1 + amp * n; p.setXYZ(i, x * d, y * d, z * d); }
+  return geo;
+}
+function makeOakGeo() {
+  const parts = []; for (let k = 0; k < 7; k++) { const r = rnd(2.0, 3.1), g = noiseDisp(new T.SphereGeometry(r, 14, 10), 0.14, 0.9 + k * 0.17); g.translate(rnd(-2.2, 2.2), rnd(-1.6, 2.2) + (k === 0 ? 1.2 : 0), rnd(-2.2, 2.2)); parts.push(g); }
+  return mergeGeos(parts);
+}
+function makePineGeo() {
+  const parts = []; const rs = [3.3, 2.8, 2.3, 1.7, 1.05], hs = [3.4, 3.2, 3.0, 2.7, 2.4];
+  rs.forEach((r, k) => { const g = new T.ConeGeometry(r, hs[k], 12, 3); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i), a = Math.atan2(p.getZ(i), p.getX(i)), rr = Math.hypot(p.getX(i), p.getZ(i)); const j = 1 + 0.16 * Math.sin(a * 5 + k * 2.1) * (rr / r) + 0.1 * Math.sin(a * 11 + k); p.setXYZ(i, p.getX(i) * j, y - (rr / r) * 0.35, p.getZ(i) * j); } g.translate(0, 2.4 + k * 2.3, 0); parts.push(g); });
+  return mergeGeos(parts);
+}
+
 /* ------------------------------------------------------------ Himmel & Umgebung */
 const THEMES = {
   day:    { top: 0x2c6bd6, mid: 0xa9d0f5, bot: 0x7e8f78, sun: [0.45, 0.62, 0.35], sunCol: 0xfff2cf, fog: 0xaed0f0, fogNear: 220, fogFar: 1900, hemi: [0xc2dcff, 0x4d5c3c, 1.05], sunI: 3.2, sunC: 0xfff0d6, exp: 1.0, ground: 'grass' },
@@ -213,13 +248,27 @@ const THEMES = {
 function skyMaterial(th) {
   return new T.ShaderMaterial({
     side: T.BackSide, depthWrite: false, depthTest: false, fog: false,
-    uniforms: { top: { value: new T.Color(th.top) }, mid: { value: new T.Color(th.mid) }, bot: { value: new T.Color(th.bot) }, sunDir: { value: new T.Vector3(...th.sun).normalize() }, sunCol: { value: new T.Color(th.sunCol) } },
+    uniforms: { top: { value: new T.Color(th.top) }, mid: { value: new T.Color(th.mid) }, bot: { value: new T.Color(th.bot) }, sunDir: { value: new T.Vector3(...th.sun).normalize() }, sunCol: { value: new T.Color(th.sunCol) }, time: { value: 0 }, cloudAmt: { value: 0 } },
     vertexShader: 'varying vec3 vD; void main(){ vD=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-    fragmentShader: `uniform vec3 top,mid,bot,sunDir,sunCol; varying vec3 vD;
-      void main(){ float h=vD.y; vec3 c = h>0.0 ? mix(mid,top,pow(h,0.5)) : mix(mid,bot,pow(-h,0.45));
-        float sd=max(dot(normalize(vD),sunDir),0.0);
-        c += sunCol*(pow(sd,900.0)*40.0 + pow(sd,40.0)*0.55 + pow(sd,6.0)*0.22);
-        gl_FragColor=vec4(c,1.0);
+    fragmentShader: `uniform vec3 top,mid,bot,sunDir,sunCol; uniform float time, cloudAmt; varying vec3 vD;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+      float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x), mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x), f.y); }
+      float fbm(vec2 p){ float a=0.5, s=0.0; for(int i=0;i<6;i++){ s+=a*vnoise(p); p=p*2.03+vec2(17.3,9.1); a*=0.5; } return s; }
+      void main(){
+        vec3 d = normalize(vD); float h = d.y;
+        vec3 c = h>0.0 ? mix(mid,top,pow(h,0.5)) : mix(mid,bot,pow(-h,0.45));
+        float sd = max(dot(d,sunDir),0.0), cl = 0.0;
+        if (cloudAmt > 0.0 && h > 0.0) {
+          vec2 uv = d.xz / (h + 0.18) * 0.7 + vec2(time*0.006, time*0.002);
+          float n = fbm(uv*1.4), n2 = fbm(uv*1.4 + sunDir.xz*0.12);
+          float cov = smoothstep(0.47, 0.78, n);
+          float shade = clamp((n - n2) * 4.0 + 0.58, 0.0, 1.0);
+          vec3 lit = mix(vec3(1.0), sunCol, 0.35) * 1.05, dk = mix(mid, top, 0.3) * 0.62 + vec3(0.05);
+          cl = cov * smoothstep(0.0, 0.14, h) * cloudAmt;
+          c = mix(c, mix(dk, lit, shade), cl);
+        }
+        c += sunCol*(pow(sd,900.0)*40.0 + pow(sd,40.0)*0.55 + pow(sd,6.0)*0.22) * (1.0 - 0.75*cl);
+        gl_FragColor = vec4(c,1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`
@@ -235,6 +284,7 @@ function makeEnv(th) {
 
 /* ------------------------------------------------------------ Auto-Modell */
 function makeCarModel(spec) {
+  if (save.quality >= 3 && window.makeCarModelUltra) return window.makeCarModelUltra(spec);
   const G = new T.Group();
   const body = new T.MeshPhysicalMaterial({ color: spec.color, metalness: 0.2, roughness: 0.34, clearcoat: 1, clearcoatRoughness: 0.12, envMapIntensity: 0.55 });
   const acc = new T.MeshPhysicalMaterial({ color: spec.accent, metalness: 0.15, roughness: 0.4, clearcoat: 0.6, envMapIntensity: 0.55 });
@@ -372,30 +422,31 @@ function disposeScene(s) {
 function buildRaceScene(trackIdx, nCars) {
   const cfg = TRACKS[trackIdx], tr = C.buildTrack(cfg), th = THEMES[cfg.theme];
   const scene = new T.Scene();
-  scene.fog = new T.Fog(th.fog, th.fogNear, th.fogFar);
+  scene.fog = new T.Fog(th.fog, th.fogNear, th.fogFar); scene.userData.night = cfg.theme === 'night';
   scene.background = new T.Color(th.mid);
   scene.environment = makeEnv(th);
   const night = cfg.theme === 'night';
 
   // Himmel
-  const sky = new T.Mesh(new T.SphereGeometry(1500, 32, 16), skyMaterial(th)); sky.renderOrder = -10; sky.frustumCulled = false; scene.add(sky);
+  const sky = new T.Mesh(new T.SphereGeometry(1500, 32, 16), skyMaterial(th)); sky.renderOrder = -10; sky.frustumCulled = false; sky.userData.noAO = true; scene.add(sky);
   if (night) {
     const n = 900, p = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, e = Math.acos(rnd(0.05, 1)), r = 1400; p[i * 3] = Math.sin(e) * Math.cos(a) * r; p[i * 3 + 1] = Math.cos(e) * r; p[i * 3 + 2] = Math.sin(e) * Math.sin(a) * r; }
     const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(p, 3));
     const stars = new T.Points(g, new T.PointsMaterial({ color: 0xffffff, size: 2.4, sizeAttenuation: false, fog: false, depthWrite: false })); stars.renderOrder = -9; stars.frustumCulled = false; sky.add(stars);
-  } else {
+  } else if (save.quality < 2) {
     const cm = new T.SpriteMaterial({ map: texSoft(), color: th === THEMES.sunset ? 0xffc9a0 : 0xffffff, opacity: 0.8, fog: false, depthWrite: false });
     for (let i = 0; i < 26; i++) { const s = new T.Sprite(cm); const a = Math.random() * 6.283, r = rnd(700, 1350); s.position.set(Math.cos(a) * r, rnd(180, 420), Math.sin(a) * r); s.scale.set(rnd(260, 520), rnd(60, 120), 1); s.renderOrder = -8; sky.add(s); }
   }
 
+  sky.material.uniforms.cloudAmt.value = (save.quality >= 2 && !night) ? 1 : 0;
   // Licht
   const hemi = new T.HemisphereLight(th.hemi[0], th.hemi[1], th.hemi[2]); scene.add(hemi);
   const sun = new T.DirectionalLight(th.sunC, th.sunI);
   const sunDir = new T.Vector3(...th.sun).normalize();
   sun.castShadow = QUAL[save.quality].shadow > 0;
   sun.shadow.mapSize.set(QUAL[save.quality].mapSize, QUAL[save.quality].mapSize);
-  const sc = sun.shadow.camera; sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 10; sc.far = 400;
+  const shR = save.quality >= 3 ? 58 : 45, sc = sun.shadow.camera; sc.left = -shR; sc.right = shR; sc.top = shR; sc.bottom = -shR; sc.near = 10; sc.far = 400;
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.06;
   scene.add(sun, sun.target);
 
@@ -408,6 +459,7 @@ function buildRaceScene(trackIdx, nCars) {
     scaleUV(gGeo, 9000 / gk[1], (harbor ? 4500 : 9000) / gk[1]);
     gMat = new T.MeshStandardMaterial({ map: pbr(gk[0] + '_c'), normalMap: pbr(gk[0] + '_n'), roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 });
     if (th.ground === 'pave') gMat.color.setHex(0x70707a);
+    if (save.quality >= 2) gMat.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `vec4 sampledDiffuseColor = texture2D( map, vMapUv ); float macroL = dot(texture2D( map, vMapUv * 0.037 ).rgb, vec3(0.333)); sampledDiffuseColor.rgb *= mix(0.68, 1.3, smoothstep(0.1, 0.7, macroL)); diffuseColor *= sampledDiffuseColor;`); };
   } else {
     const gTex = texGround(th.ground).clone(); gTex.needsUpdate = true; gTex.repeat.set(700, harbor ? 350 : 700);
     gMat = new T.MeshStandardMaterial({ map: gTex, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 });
@@ -438,6 +490,10 @@ function buildRaceScene(trackIdx, nCars) {
     const a = sg * tr.halfW, b = sg * (tr.halfW + tr.kerb);
     const k = new T.Mesh(ribbon(tr, Math.min(a, b), Math.max(a, b), 0.045, 0.045, 3.2), kMat); k.receiveShadow = true; scene.add(k);
   }
+  if (cfg.grass && pbr('grav_c')) { // Kiesbett neben der Strecke (bremst wie Gras)
+    const gv = cfg.theme === 'sunset' ? 'dgrav' : 'grav', gm = new T.MeshStandardMaterial({ map: pbr(gv + '_c'), normalMap: pbr(gv + '_n'), color: cfg.theme === 'sunset' ? 0xe8d0c0 : 0xc4c4c4, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    for (const sg of [-1, 1]) { const a = sg * (tr.halfW + tr.kerb), b = sg * (tr.halfW + tr.kerb + 6.5); const m = new T.Mesh(ribbon(tr, Math.min(a, b), Math.max(a, b), 0.02, 0.02, 3.5, 6.5 / 3.5), gm); m.receiveShadow = true; scene.add(m); }
+  }
   if (!cfg.grass) { // Gehweg bei der Stadtstrecke
     const sw = harbor ? 'pave' : 'asph';
     const pm = pbr(sw + '_c') ? new T.MeshStandardMaterial({ map: pbr(sw + '_c'), normalMap: pbr(sw + '_n'), color: harbor ? 0xcfcac0 : 0x6c6c74, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })
@@ -459,6 +515,23 @@ function buildRaceScene(trackIdx, nCars) {
   for (const sg of [-1, 1]) {
     const ranges = tun ? [[0, tun.i0], [tun.i1, tr.N]] : [[0, tr.N]];
     for (const [ra, rb] of ranges) { const w = new T.Mesh(wallGeo(tr, tr.halfW + tr.wall, 1.25, sg, 48, ra, rb), bMat); w.receiveShadow = true; w.castShadow = true; scene.add(w); }
+  }
+  if (save.quality >= 3) { // Fangzaun, Pfosten und Reifenstapel (Ultra)
+    const off = tr.halfW + tr.wall, ranges = tun ? [[0, tun.i0], [tun.i1, tr.N]] : [[0, tr.N]];
+    const wt = texWire(), fm = new T.MeshStandardMaterial({ map: wt, transparent: true, alphaTest: 0.4, side: T.DoubleSide, roughness: 0.5, metalness: 0.7 });
+    const poleG = new T.CylinderGeometry(0.045, 0.055, 4.6, 6), poleM = new T.MeshStandardMaterial({ color: 0x777c84, metalness: 0.8, roughness: 0.4 });
+    const inTun = i => tun && i >= tun.i0 - 2 && i <= tun.i1 + 2, step = Math.max(1, Math.round(8 / tr.ds)), poleIdx = [];
+    for (let i = 0; i < tr.N; i += step) if (!inTun(i)) poleIdx.push(i);
+    const poles = new T.InstancedMesh(poleG, poleM, poleIdx.length * 2), dm = new T.Object3D();
+    poleIdx.forEach((i, q) => [-1, 1].forEach((sg, s2) => { dm.position.set(tr.px[i] + tr.rx[i] * off * sg, 2.3, tr.pz[i] + tr.rz[i] * off * sg); dm.rotation.set(0, 0, 0); dm.scale.set(1, 1, 1); dm.updateMatrix(); poles.setMatrixAt(q * 2 + s2, dm.matrix); }));
+    poles.castShadow = false; scene.add(poles);
+    for (const sg of [-1, 1]) for (const [ra, rb] of ranges) { const geo = wallSeg(tr, off * sg, 3.3, ra, Math.min(rb, tr.N), 1.0, 3.3); geo.translate(0, 1.25, 0); const m = new T.Mesh(geo, fm); scene.add(m); }
+    // Reifenstapel an den Außenseiten enger Kurven
+    const tireG = new T.CylinderGeometry(0.33, 0.33, 0.32, 14), tireIM = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+    const spots = []; for (let i = 0; i < tr.N; i++) { if (inTun(i)) continue; const c = tr.curv[i]; if (Math.abs(c) > 0.011 && i % 1 === 0) spots.push([i, c > 0 ? 1 : -1]); }
+    const tires = new T.InstancedMesh(tireG, tireIM, spots.length * 12); let ti = 0;
+    spots.forEach(([i, sg]) => { const base = new T.Color([0x1a1a1c, 0x1a1a1c, 0x1a1a1c, 0x222226, 0xdddddd, 0x2255aa, 0xaa2222][(Math.random() * 7) | 0]); for (let L = 0; L < 12; L++) { const col = L >> 2, lay = L & 3, ly = lay % 3, tq = (col - 1.5) * 1.0 + (lay === 3 ? 0.33 : 0); dm.position.set(tr.px[i] + tr.rx[i] * (off - 0.36) * sg + tr.tx[i] * tq, 0.17 + ly * 0.33, tr.pz[i] + tr.rz[i] * (off - 0.36) * sg + tr.tz[i] * tq); dm.rotation.set(0, rnd(0, 6), 0); dm.scale.set(1, 1, 1); dm.updateMatrix(); tires.setMatrixAt(ti, dm.matrix); tires.setColorAt(ti, base); ti++; } });
+    tires.castShadow = true; tires.receiveShadow = true; scene.add(tires);
   }
   // Start/Ziel
   const sl = new T.Group(); sl.position.set(tr.px[0], 0, tr.pz[0]); sl.rotation.y = tr.h[0]; scene.add(sl);
@@ -525,6 +598,22 @@ function buildRaceScene(trackIdx, nCars) {
 
   if (cfg.theme === 'day') {
     const pts = scatter(950, 6, 260, 5000), n = pts.length;
+    if (save.quality >= 3) {
+      const ft = texFoliage(), fm = new T.MeshStandardMaterial({ map: ft, roughness: 0.88, metalness: 0 });
+      const nOak = Math.floor(n * 0.6), nPine = n - nOak;
+      const trunkG = new T.CylinderGeometry(0.22, 0.5, 1, 9); trunkG.translate(0, 0.5, 0);
+      const trunkI = new T.InstancedMesh(trunkG, new T.MeshStandardMaterial({ color: 0x5a4636, roughness: 1 }), n);
+      const oakI = new T.InstancedMesh(makeOakGeo(), fm, nOak), pineI = new T.InstancedMesh(makePineGeo(), fm.clone(), nPine);
+      const col = new T.Color();
+      pts.forEach(([x, z], i) => {
+        const oak = i < nOak, s = rnd(0.85, 1.55), th = oak ? 5.5 * s : 3.6 * s;
+        dummy.rotation.set(0, rnd(0, 6.28), 0); dummy.scale.set(s, th, s); dummy.position.set(x, 0, z); dummy.updateMatrix(); trunkI.setMatrixAt(i, dummy.matrix);
+        dummy.scale.set(s * rnd(0.9, 1.15), s * rnd(0.9, 1.2), s * rnd(0.9, 1.15));
+        if (oak) { dummy.position.set(x, th + 1.6 * s, z); dummy.updateMatrix(); oakI.setMatrixAt(i, dummy.matrix); col.setHSL(rnd(0.22, 0.31), rnd(0.4, 0.6), rnd(0.55, 0.9)); oakI.setColorAt(i, col); }
+        else { const j = i - nOak; dummy.position.set(x, 1.4 * s, z); dummy.updateMatrix(); pineI.setMatrixAt(j, dummy.matrix); col.setHSL(rnd(0.3, 0.38), rnd(0.35, 0.5), rnd(0.35, 0.6)); pineI.setColorAt(j, col); }
+      });
+      [trunkI, oakI, pineI].forEach(m => { m.castShadow = true; m.receiveShadow = true; scene.add(m); });
+    } else {
     const trunk = new T.InstancedMesh(new T.CylinderGeometry(0.35, 0.5, 4, 6), new T.MeshStandardMaterial({ color: 0x5a3b22, roughness: 1 }), n);
     const c1 = new T.InstancedMesh(new T.ConeGeometry(3.4, 8, 8), new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true }), n);
     const c2 = new T.InstancedMesh(new T.ConeGeometry(2.5, 6.5, 8), c1.material, n);
@@ -538,6 +627,7 @@ function buildRaceScene(trackIdx, nCars) {
       col.setHSL(rnd(0.27, 0.36), rnd(0.45, 0.65), rnd(0.18, 0.3)); c1.setColorAt(i, col); c2.setColorAt(i, col);
     });
     [trunk, c1, c2].forEach(m => { m.castShadow = true; m.receiveShadow = false; scene.add(m); });
+    }
     // ferne Hügel
     const hm = new T.MeshStandardMaterial({ color: 0x4e7a42, roughness: 1, flatShading: true });
     for (let i = 0; i < 26; i++) { const a = i / 26 * 6.283 + rnd(-.1, .1), r = rnd(1100, 1500); const h = new T.Mesh(new T.SphereGeometry(1, 10, 6), hm); h.scale.set(rnd(180, 360), rnd(60, 160), rnd(180, 360)); h.position.set(Math.cos(a) * r - 150, 0, Math.sin(a) * r - 250); scene.add(h); }
@@ -663,18 +753,18 @@ function buildRaceScene(trackIdx, nCars) {
 /* ------------------------------------------------------------ Showroom */
 const showScene = new T.Scene();
 const showCam = new T.PerspectiveCamera(36, innerWidth / innerHeight, 0.1, 200);
-let showCar = null, showCarId = null, showAngle = 0;
+let showCar = null, showCarId = null, showAngle = 0; const showLights = [];
 (function initShow() {
-  showScene.background = new T.Color(0x07090e);
+  showScene.background = new T.Color(0x07090e); showScene.userData.night = true;
   showScene.fog = new T.Fog(0x07090e, 14, 40);
   showScene.environment = makeEnv(THEMES.day);
   const floor = new T.Mesh(new T.CircleGeometry(9, 64), new T.MeshStandardMaterial({ color: 0x14171f, metalness: 0.85, roughness: 0.28 }));
   floor.rotation.x = -Math.PI / 2; showScene.add(floor);
   const ring = new T.Mesh(new T.RingGeometry(5.1, 5.25, 80), new T.MeshBasicMaterial({ color: 0xff2d2d })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; showScene.add(ring);
   showScene.add(new T.HemisphereLight(0x8899cc, 0x101018, 0.6));
-  const k = new T.SpotLight(0xffffff, 380, 40, 0.6, 0.6, 1.4); k.position.set(6, 12, 8); k.castShadow = false; showScene.add(k, k.target);
-  const r = new T.SpotLight(0xff4040, 260, 40, 0.7, 0.8, 1.4); r.position.set(-9, 5, -8); showScene.add(r);
-  const b = new T.SpotLight(0x5aa0ff, 220, 40, 0.7, 0.8, 1.4); b.position.set(9, 4, -6); showScene.add(b);
+  const k = new T.SpotLight(0xffffff, 380, 40, 0.6, 0.6, 1.4); showLights.push(k); k.position.set(6, 12, 8); k.castShadow = false; showScene.add(k, k.target);
+  const r = new T.SpotLight(0xff4040, 260, 40, 0.7, 0.8, 1.4); showLights.push(r); r.position.set(-9, 5, -8); showScene.add(r);
+  const b = new T.SpotLight(0x5aa0ff, 220, 40, 0.7, 0.8, 1.4); showLights.push(b); b.position.set(9, 4, -6); showScene.add(b);
 })();
 function showCarModel(id) {
   if (showCarId === id) return;
@@ -752,7 +842,31 @@ function handleImpact(c) {
     m.body.color.copy(m.bodyBase).lerp(new T.Color(0x151515), Math.min(1, c.dmg) * 0.6);
   }
 }
+const Skid = {
+  max: 6000, n: 0, mesh: null, last: new Map(),
+  init(scene) {
+    this.n = 0; this.last.clear(); const m = this.max, pos = new Float32Array(m * 12), idx = new Uint32Array(m * 6);
+    for (let i = 0; i < m; i++) idx.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 1, i * 4 + 3, i * 4 + 2], i * 6);
+    const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.BufferAttribute(pos, 3)); geo.setIndex(new T.BufferAttribute(idx, 1)); geo.setDrawRange(0, 0);
+    this.mesh = new T.Mesh(geo, new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+    this.mesh.frustumCulled = false; scene.add(this.mesh);
+  },
+  add(key, x, z) {
+    const l = this.last.get(key); this.last.set(key, { x, z }); if (!l) return;
+    const dx = x - l.x, dz = z - l.z, len = Math.hypot(dx, dz); if (len < 0.2 || len > 4) return;
+    const nx = -dz / len * 0.13, nz = dx / len * 0.13, a = this.mesh.geometry.attributes.position, i = (this.n++ % this.max) * 12, y = 0.04;
+    a.array.set([l.x - nx, y, l.z - nz, l.x + nx, y, l.z + nz, x - nx, y, z - nz, x + nx, y, z + nz], i); a.needsUpdate = true;
+    this.mesh.geometry.setDrawRange(0, Math.min(this.n, this.max) * 6);
+  },
+  stop(key) { this.last.delete(key); }
+};
 function emitDamageFx(c, dt) {
+  // Reifenqualm + Bremsspuren
+  const skidding = !c.onGrass && Math.abs(c.vf) > 8 && (c.slip > 3.6 || (c.inp && c.inp.brake > 0.85 && c.vf > 38));
+  [[-0.9, 1.75], [0.9, 1.75], [-0.88, -1.7], [0.88, -1.7]].forEach(([lx, lz], w) => {
+    const key = c.slot * 4 + w, rear = lz > 0, active = skidding && (rear || (c.inp && c.inp.brake > 0.85));
+    if (active) { const P = carToWorld(c, lx, 0.1, lz); if (save.quality >= 2 && Skid.mesh) Skid.add(key, P[0], P[2]); if (Math.random() < 0.5) FX.spawn('smoke', P[0], 0.2, P[2], c.vx * 0.15 + rnd(-0.6, 0.6), rnd(0.6, 1.4), c.vz * 0.15 + rnd(-0.6, 0.6), rnd(0.7, 1.3), 0.5, 2.6, 0xe4e4e4, 0.26, -0.15); } else Skid.stop(key);
+  });
   if (c.dmg > 0.3) {
     c.fxAcc = (c.fxAcc || 0) + dt * (6 + c.dmg * 40);
     while (c.fxAcc > 1) {
@@ -805,6 +919,62 @@ const Sound = {
   crash(v) { if (!this.ok) return; const t = this.ctx.currentTime, s = this.ctx.createBufferSource(); const b = this.ctx.createBuffer(1, 8000, this.ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length); s.buffer = b; const g = this.ctx.createGain(); g.gain.value = 0.15 + v * 0.5; const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; s.connect(f).connect(g).connect(this.master); s.start(t); },
   mute(m) { save.muted = m; persist(); if (this.ok) this.master.gain.value = m ? 0 : 0.5; }
 };
+
+/* ------------------------------------------------------------ Ultra: Postprocessing */
+const LensShader = {
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, speed: { value: 0 }, aspect: { value: 1.6 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float time, speed, aspect; varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
+    void main(){
+      vec2 c = vUv - 0.5; float r = length(c*vec2(aspect,1.0));
+      float ca = 0.0014 * r * r * (1.0 + speed * 2.5);
+      vec2 dir = normalize(c + 1e-5);
+      float blur = speed * 0.05 * smoothstep(0.12, 0.75, r * 1.3);
+      vec3 col = vec3(0.0);
+      for (int i = 0; i < 10; i++) {
+        float t = float(i) / 9.0; vec2 uv = vUv - c * blur * t;
+        col.r += texture2D(tDiffuse, uv - dir * ca).r; col.g += texture2D(tDiffuse, uv).g; col.b += texture2D(tDiffuse, uv + dir * ca).b;
+      }
+      col /= 10.0;
+      col *= 1.0 - 0.5 * smoothstep(0.3, 1.0, r * 0.95);
+      col += (hash(vUv * vec2(1920.0, 1080.0) + time) - 0.5) * 0.014;
+      gl_FragColor = vec4(col, 1.0);
+    }`
+};
+const Post = {
+  composer: null, passes: {}, failed: false,
+  enabled() { return save.quality === 3 && !!window.POST && !this.failed; },
+  build(scene, cam) {
+    const P = window.POST, size = renderer.getDrawingBufferSize(new T.Vector2());
+    let rt;
+    try { rt = new T.WebGLRenderTarget(size.x, size.y, { type: T.HalfFloatType, samples: 4 }); } catch (e) { rt = new T.WebGLRenderTarget(size.x, size.y, { type: T.HalfFloatType }); }
+    const comp = this.composer = new P.EffectComposer(renderer, rt);
+    comp.setPixelRatio(renderer.getPixelRatio()); comp.setSize(innerWidth, innerHeight);
+    const pa = this.passes;
+    pa.render = new P.RenderPass(scene, cam);
+    pa.ao = new P.GTAOPass(scene, cam, innerWidth, innerHeight);
+    pa.ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 16, distanceFallOff: 1.0, screenSpaceRadius: false });
+    pa.ao.blendIntensity = 0.85;
+    const ov = pa.ao.overrideVisibility.bind(pa.ao);
+    pa.ao.overrideVisibility = function () { ov(); this.scene.traverse(o => { if (o.isSprite || o.userData.noAO) o.visible = false; }); };
+    pa.bloom = new P.UnrealBloomPass(new T.Vector2(innerWidth, innerHeight), 0.3, 0.55, 1.0);
+    pa.lens = new P.ShaderPass(LensShader);
+    pa.out = new P.OutputPass();
+    [pa.render, pa.ao, pa.bloom, pa.lens, pa.out].forEach(p => comp.addPass(p));
+  },
+  resize() { if (this.composer) { this.composer.setPixelRatio(renderer.getPixelRatio()); this.composer.setSize(innerWidth, innerHeight); } },
+  render(scene, cam, speed, bloom, dt) {
+    try {
+      if (!this.composer) this.build(scene, cam);
+      const pa = this.passes; pa.render.scene = pa.ao.scene = scene; pa.render.camera = pa.ao.camera = cam;
+      pa.bloom.strength = bloom === undefined ? 0.3 : bloom; pa.bloom.threshold = scene.userData.night ? 1.15 : 1.0;
+      pa.lens.uniforms.speed.value = clamp(speed || 0, 0, 1); pa.lens.uniforms.time.value = (pa.lens.uniforms.time.value + (dt || 0.016)) % 100; pa.lens.uniforms.aspect.value = innerWidth / innerHeight;
+      this.composer.render();
+    } catch (e) { console.error('Post disabled:', e); this.failed = true; renderer.render(scene, cam); }
+  }
+};
+function renderFrame(scene, cam, speed, bloom, dt) { if (Post.enabled()) Post.render(scene, cam, speed, bloom, dt); else renderer.render(scene, cam); }
 
 /* ------------------------------------------------------------ Eingabe */
 const keys = {};
@@ -886,7 +1056,8 @@ function renderMenu() {
 }
 function renderSettings() {
   const q = $('setQual'); q.innerHTML = '';
-  QUAL.forEach((o, i) => { const b = document.createElement('button'); b.textContent = o.label; if (i === save.quality) b.className = 'sel'; b.onclick = () => { save.quality = i; persist(); applyQuality(); renderSettings(); }; q.appendChild(b); });
+  QUAL.forEach((o, i) => { const b = document.createElement('button'); b.textContent = o.label; if (i === save.quality) b.className = 'sel'; b.onclick = () => { save.quality = i; persist(); applyQuality(); renderSettings(); showCarId = null; showCarModel(previewId); }; q.appendChild(b); });
+  $('setQualInfo').textContent = ['Niedrig: schnellste Darstellung, einfache Schatten.', 'Mittel: Schatten, Standard-Details.', 'Hoch: Himmel mit Wolken, Kiesbetten, Reifenspuren, Bodendetail.', 'Ultra: Post-Processing (Bloom, Umgebungsverdeckung, Bewegungsunschärfe, Antialiasing), hochdetaillierte Autos mit Spiegelungen, Fangzäune, Reifenstapel, realistische Bäume, größere Schattenqualität. Braucht eine starke Grafikkarte.'][save.quality];
   $('setBots').value = save.bots; $('setBotsV').textContent = save.bots + ' Bots · ' + (save.bots + 1) + ' Autos';
   $('setFov').value = save.fov; $('setFovV').textContent = save.fov + '°';
   $('setAuto').checked = !!save.auto; $('setSound').checked = !save.muted;
@@ -934,7 +1105,7 @@ function initRace() {
     const sp = new T.SpotLight(0xfff0d0, 520, 200, 0.42, 0.75, 1.3); sp.position.set(0, 0.6, -2.4);
     const tg = new T.Object3D(); tg.position.set(0, -2, -40); player.model.group.add(sp, tg); sp.target = tg;
   }
-  debris.length = 0; FX.init(scene);
+  debris.length = 0; FX.init(scene); if (save.quality >= 2) Skid.init(scene);
   race = { scene, tr, cfg, cars, player, laps: cfg.laps, time: 0, phase: 'grid', phaseT: 0, lightsOn: 0, goDelay: rnd(0.6, 1.4), finishOrder: [], done: false, paused: false, acc: 0, wrongT: 0, stuckT: 0, bannerT: 0, shake: 0, rpm: 0.2, gear: 1, lastLap: 0, bestLap: save.best[cfg.id] || 0, resultT: -1, over: false };
   mode = 'race'; camMode = 0;
   setupHud(); $('hud').classList.remove('hidden');
@@ -1097,6 +1268,17 @@ function renderRace(dt) {
     if (c.isPlayer) { c.model.wheelRot.rotation.z = c.steer * 1.4; }
   }
   FX.update(dt); updateDebris(dt);
+  if (save.quality >= 3) {
+    if (!S.cube) {
+      const rt = new T.WebGLCubeRenderTarget(192, { generateMipmaps: true, minFilter: T.LinearMipmapLinearFilter, type: T.HalfFloatType });
+      S.cube = { rt, cam: new T.CubeCamera(0.3, 1800, rt), n: 0 }; S.scene.add(S.cube.cam);
+      R.cars.forEach(c => { c.model.body.envMap = rt.texture; c.model.acc.envMap = rt.texture; c.model.body.needsUpdate = c.model.acc.needsUpdate = true; });
+    }
+    if ((S.cube.n++ % 6) === 0) {
+      S.cube.cam.position.set(p.x, 1.3, p.z); p.model.group.visible = false; const sa = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
+      S.cube.cam.update(renderer, S.scene); renderer.shadowMap.autoUpdate = sa; p.model.group.visible = true;
+    }
+  }
   // Kamera
   const fx = -Math.sin(p.h), fz = -Math.cos(p.h), speed = Math.abs(p.vf);
   const latG = p.vl * (p.yaw || 0);
@@ -1124,13 +1306,14 @@ function renderRace(dt) {
   S.sun.position.set(p.x + S.sunDir.x * 150, S.sunDir.y * 150, p.z + S.sunDir.z * 150); S.sun.target.position.set(p.x, 0, p.z);
   if (R.dbg) { camera.position.set(...R.dbg.p); camera.lookAt(...R.dbg.l); }
   S.sky.position.copy(camera.position);
+  S.sky.material.uniforms.time.value += dt;
   if (S.seaTex) { S.seaTex.offset.x += dt * 0.0016; S.seaTex.offset.y += dt * 0.0009; }
   if (S.tunnelInfo) {
     const t = S.tunnelInfo, f = clamp(1 - Math.max(0, t.s0 - p.s, p.s - t.s1) / 22, 0, 1), ei = 1 - 0.7 * f;
     S.hemi.intensity = S.th.hemi[2] * (1 - 0.55 * f); S.sun.intensity = S.th.sunI * (1 - 0.97 * f);
     S.tLight.intensity = 140 * f; S.tLight.position.set(p.x, 5.4, p.z);
     S.envMats.forEach(m => m.envMapIntensity = ei);
-    R.cars.forEach(c => { c.model.body.envMapIntensity = 0.55 * ei; c.model.acc.envMapIntensity = 0.55 * ei; });
+    R.cars.forEach(c => { const eb = c.model.envBase || 0.55; c.model.body.envMapIntensity = eb * ei; c.model.acc.envMapIntensity = eb * ei; });
   }
   S.scene.fog.far = S.th.fogFar;
   // Motorsound / HUD
@@ -1144,7 +1327,7 @@ function renderRace(dt) {
   updateHud(R, p, speed);
   S.scene.getObjectByName; // (kein-op)
   renderer.toneMappingExposure = S.th.exp;
-  renderer.render(S.scene, camera);
+  renderFrame(S.scene, camera, clamp(speed / 95, 0, 1) * (camMode === 0 ? 1 : 0.6), S.night ? 0.4 : 0.26, dt);
 }
 function updateHud(R, p, speed) {
   const rk = ranking(), pos = rk.indexOf(p) + 1;
@@ -1185,8 +1368,10 @@ function frame(now) {
     showAngle += dt * 0.35;
     if (showCar) showCar.group.rotation.y = showAngle;
     showCam.position.set(0, 3.4, 12.5); showCam.lookAt(0, 0.55, 0);
+    if (window.__showDbg) { showCam.position.set(...window.__showDbg.p); showCam.lookAt(...window.__showDbg.l); if (window.__showDbg.fix && showCar) showCar.group.rotation.y = window.__showDbg.fix[0]; }
     renderer.toneMappingExposure = 1.0;
-    renderer.render(showScene, showCam);
+    showLights.forEach(l => { if (!l.userData.base) l.userData.base = l.intensity; l.intensity = l.userData.base * (Post.enabled() ? 0.5 : 1); });
+    renderFrame(showScene, showCam, 0, 0.12, dt);
   } else if (mode === 'race' && race) {
     // adaptive Qualität
     fpsAvg += (1 / Math.max(dt, 1e-4) - fpsAvg) * 0.05; fpsT += dt;
@@ -1203,5 +1388,5 @@ function frame(now) {
 // Start
 $('loading').textContent = 'LADE TEXTUREN …'; $('loading').classList.remove('hidden');
 preloadImages().then(() => { $('loading').classList.add('hidden'); $('loading').textContent = 'LADE STRECKE …'; applyQuality(); renderMenu(); requestAnimationFrame(frame); });
-window.__game = { dbg(p, l) { if (race) race.dbg = p ? { p, l } : null; }, step(n) { for (let i = 0; i < n; i++) stepRace(STEP); }, get race() { return race; }, save, startRace, toMenu, setSel(t, d) { selTrack = t; selDiff = d; } };
+window.__game = { get postState() { return JSON.stringify({ on: Post.enabled(), built: !!Post.composer, failed: Post.failed, q: save.quality }); }, dbg(p, l) { if (race) race.dbg = p ? { p, l } : null; }, step(n) { for (let i = 0; i < n; i++) stepRace(STEP); }, get race() { return race; }, save, startRace, toMenu, setSel(t, d) { selTrack = t; selDiff = d; } };
 })();

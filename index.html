@@ -167,7 +167,7 @@ footer>*{pointer-events:auto}
 <div id="settings" class="overlay hidden"><div class="box" style="text-align:left;min-width:420px">
   <h1 style="font-size:32px;text-align:center;margin-bottom:18px">EINSTELLUNGEN</h1>
   <div class="srow"><label>Anzahl der Bots <b id="setBotsV"></b></label><input type="range" id="setBots" min="1" max="15" step="1"></div>
-  <div class="srow"><label>Grafikqualität</label><div class="seg" id="setQual"></div></div>
+  <div class="srow"><label>Grafikqualität</label><div class="seg" id="setQual"></div><p id="setQualInfo" style="font-size:12px;color:#9aa7bd;margin-top:8px;line-height:1.5"></p></div>
   <div class="srow"><label>Sichtfeld (FOV) <b id="setFovV"></b></label><input type="range" id="setFov" min="60" max="100" step="1"></div>
   <div class="srow chk"><label><input type="checkbox" id="setAuto"> Qualität bei niedrigen FPS automatisch senken</label></div>
   <div class="srow chk"><label><input type="checkbox" id="setSound"> Ton an</label></div>
@@ -178,9 +178,10 @@ footer>*{pointer-events:auto}
 <div id="loading" class="overlay hidden">LADE STRECKE …</div>
 <div id="noWebgl" class="overlay hidden"><div class="box"><h1>WebGL fehlt</h1><div class="big">Dein Browser unterstützt WebGL nicht oder es ist deaktiviert.</div></div></div>
 
-<script src="three.min.js"></script>
+<script src="three.bundle.js"></script>
 <script src="core.js"></script>
 <script src="textures.js"></script>
+<script src="carultra.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
