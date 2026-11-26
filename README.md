@@ -7,7 +7,8 @@
 - **Einstellungen** (Menü oben rechts): Anzahl der Bots (1–15), Grafikqualität (Niedrig–Ultra), Sichtfeld, Auto-Qualität, Ton.
 - **Bot-Schwierigkeit:** Leicht / Mittel / Schwer (mehr Preisgeld, schnellere Bots, schlechterer Startplatz)
 - **Geld:** Platz 1–3 bringt Preisgeld; damit in der Garage 5 Fahrzeuge freischalten. Speicherstand im Browser (localStorage).
-- **Unfälle:** Das getroffene Teil fliegt sofort ab. Spoiler weg = 5 % langsamer je Flügel und schlechtere Beschleunigung. Reifen weg = Fahrzeug nicht mehr fahrbar (ausgeschieden, kein Preisgeld). Dazu Spins, Rauch, Feuer, Funken und Verformungen.
+- **Rennunfälle:** In jeder Runde bauen 1–5 Bots einen Unfall, die Wracks bleiben mitten auf der Strecke liegen (Hindernisse für spätere Runden, auf der Minimap rot markiert, Warnung „WRACK VORAUS“). Die anderen Bots umfahren sie.
+- **Unfälle:**  Das getroffene Teil fliegt sofort ab. Spoiler weg = 5 % langsamer je Flügel und schlechtere Beschleunigung. Reifen weg = Fahrzeug nicht mehr fahrbar (ausgeschieden, kein Preisgeld). Dazu Spins, Rauch, Feuer, Funken und Verformungen.
 - Dateien: `core.js` (Strecken, Physik, Bot-KI), `game.js` (3D, HUD, Audio, Menü)
 
 ## Texturen

@@ -1115,6 +1115,7 @@ function initRace() {
   }
   debris.length = 0; FX.init(scene); if (save.quality >= 2) Skid.init(scene);
   race = { test: testCarId, testName: pSpec.name, maxV: 0, scene, tr, cfg, cars, player, laps: cfg.laps, time: 0, phase: 'grid', phaseT: 0, lightsOn: 0, goDelay: rnd(0.6, 1.4), finishOrder: [], done: false, paused: false, acc: 0, wrongT: 0, stuckT: 0, bannerT: 0, shake: 0, rpm: 0.2, gear: 1, lastLap: 0, bestLap: testCarId ? 0 : (save.best[cfg.id] || 0), resultT: -1, over: false };
+  planIncidents(race);
   mode = 'race'; camMode = 0;
   setupHud(); $('hud').classList.remove('hidden');
   drawMapBase();
@@ -1181,6 +1182,35 @@ function inputForPlayer() {
   return { throttle: up ? 1 : 0, brake: down ? 1 : 0, steer: (left ? 1 : 0) - (right ? 1 : 0), drift: !!keys.Space };
 }
 
+/* ---------- Geplante Unfälle: pro Runde 1–5 Bots, Wracks bleiben mitten auf der Strecke ---------- */
+function planIncidents(R) {
+  const pool = R.cars.filter(c => !c.isPlayer).sort(() => Math.random() - 0.5), L = R.tr.L;
+  for (let lap = 0; lap < R.laps && pool.length >= 2; lap++) {
+    const k = 1 + Math.floor(Math.random() * Math.min(5, pool.length - 1)), fr = [];
+    for (let i = 0; i < k; i++) {
+      let f, tries = 0; do { f = (lap === 0 ? 0.14 : 0.06) + Math.random() * (lap === R.laps - 1 ? 0.62 : 0.78); tries++; } while (tries < 30 && fr.some(x => Math.abs(x - f) < 0.07));
+      fr.push(f); const bot = pool.pop(); bot.plan = { prog: lap * L + f * L, lap };
+    }
+  }
+}
+function startCrash(c, R) {
+  const tr = R.tr, v = Math.max(10, c.vf), travel = clamp(v * v / 28, 6, 60), side = Math.random() < 0.5 ? -1 : 1;
+  const tgt = C.trackAt(tr, c.s + travel, rnd(-1.0, 1.0)), hf = tgt.h + side * rnd(0.5, 2.3), d0 = wrap(hf - c.h);
+  c.crash = { t: 0, T: clamp(2 * travel / v, 1.0, 3.4), x0: c.x, z0: c.z, h0: c.h, tx: tgt.x, tz: tgt.z, dh: d0 + side * (Math.random() < 0.6 ? 2 * Math.PI : 0) * rnd(0.8, 1.4), v };
+  c.dead = c.scripted = true; c.dmg = 1; c.steer = 0; c.plan = null;
+  const wi = (Math.random() * 4) | 0; c.lost.w[wi] = true; c.impacts.push({ sev: 1, x: wi % 2 ? 1 : -1, z: wi < 2 ? -1.6 : 1.6, lost: wi });
+  if (!c.lost.fw) { c.lost.fw = true; c.impacts.push({ sev: 0.8, x: 0, z: -2.6, lost: 'fw' }); }
+  if (Math.random() < 0.6 && !c.lost.rw) { c.lost.rw = true; c.impacts.push({ sev: 0.8, x: 0, z: 2.6, lost: 'rw' }); }
+  const p = R.player; if (c.prog > p.prog && c.prog - p.prog < 260) showBanner('⚠ UNFALL!', 1400);
+}
+function updateCrash(c, dt, R) {
+  const k = c.crash; k.t += dt; const u = Math.min(1, k.t / k.T), e = 1 - (1 - u) * (1 - u), sp = k.v * (1 - u);
+  const nx = k.x0 + (k.tx - k.x0) * e, nz = k.z0 + (k.tz - k.z0) * e;
+  c.vx = (nx - c.x) / dt; c.vz = (nz - c.z) / dt; c.x = nx; c.z = nz; c.h = k.h0 + k.dh * e; c.vf = sp; c.slip = 8 * (1 - u); c.hit = 0;
+  C.trackUpdate(c, R.tr, false);
+  if (u >= 1) { c.crash = null; c.wreck = true; c.vx = c.vz = c.vf = 0; c.slip = 0; for (let i = 0; i < 10; i++) FX.spawn('smoke', c.x, 0.6, c.z, rnd(-2, 2), rnd(1, 3), rnd(-2, 2), rnd(1.2, 2.4), 1.2, 4, 0x777777, 0.6, 0); }
+}
+
 function stepRace(dt) {
   const R = race, tr = R.tr, p = R.player;
   R.phaseT += dt;
@@ -1201,7 +1231,10 @@ function stepRace(dt) {
   for (const c of R.cars) {
     let inp;
     if (c.removed) continue;
-    if (c.dead && !c.isPlayer && racing) { c.deadT = (c.deadT || 0) + dt; if (c.deadT > 7) { c.removed = true; c.model.group.visible = false; FX.spawn('smoke', c.x, 0.6, c.z, 0, 1.5, 0, 1.6, 2, 5, 0xbbbbbb, 0.6, 0); continue; } }
+    if (c.plan && !c.dead && racing && c.prog >= c.plan.prog) startCrash(c, R);
+    if (c.crash) { updateCrash(c, dt, R); continue; }
+    if (c.wreck) continue;
+    if (c.dead && !c.isPlayer && !c.scripted && racing) { c.deadT = (c.deadT || 0) + dt; if (c.deadT > 7) { c.removed = true; c.model.group.visible = false; FX.spawn('smoke', c.x, 0.6, c.z, 0, 1.5, 0, 1.6, 2, 5, 0xbbbbbb, 0.6, 0); continue; } }
     if (!racing || (R.phase === 'race' && R.phaseT < (c.reaction || 0) && !c.finished)) { c.inp = { throttle: 0, brake: 0, steer: 0 }; c.vf = 0; continue; }
     if (c.isPlayer && !c.finished) inp = inputForPlayer();
     else {
@@ -1239,6 +1272,7 @@ function stepRace(dt) {
     if (c.hit > 0) { if (c.isPlayer) { R.shake = Math.max(R.shake, c.hit); Sound.crash(c.hit); $('flash').style.opacity = String(Math.min(0.35, c.hit * 0.5)); setTimeout(() => $('flash').style.opacity = '0', 90); } c.hit = 0; }
   }
   if (racing && p.drifting && p.slip > 4.5) { R.driftT = (R.driftT || 0) + dt; if (R.driftT > 0.9 && R.time - (R.driftBanner || -9) > 2.5) { R.driftBanner = R.time; R.driftT = 0; showBanner('DRIFT!', 700); } } else if (!p.drifting) R.driftT = 0;
+  if (racing && !p.finished) for (const c of R.cars) if (c.wreck) { const dp = c.prog - p.prog, lapNow = Math.floor(p.prog / tr.L); if (dp > 0 && dp < 170 && c.warnLap !== lapNow) { c.warnLap = lapNow; showBanner('⚠ WRACK VORAUS', 1300); } }
   // Falsche Richtung / Hängenbleiben
   if (racing && !p.finished) {
     const dh = Math.abs(wrap(p.h - tr.h[p.i]));
@@ -1374,6 +1408,7 @@ function updateHud(R, p, speed) {
   const cv = $('map'), g = cv.getContext('2d'), m = R.map;
   g.clearRect(0, 0, cv.width, cv.height); g.drawImage(mapBase, 0, 0);
   for (const c of R.cars) {
+    if (c.wreck || c.crash) { g.fillStyle = '#ff2a1a'; g.strokeStyle = '#fff'; g.lineWidth = 3; g.beginPath(); g.arc(m.ox + (c.x - m.x0) * m.sc, m.oz + (c.z - m.z0) * m.sc, 10, 0, 7); g.fill(); g.stroke(); continue; }
     g.fillStyle = c.isPlayer ? '#ffd54a' : '#' + c.color.toString(16).padStart(6, '0');
     g.strokeStyle = '#000'; g.lineWidth = 2;
     g.beginPath(); g.arc(m.ox + (c.x - m.x0) * m.sc, m.oz + (c.z - m.z0) * m.sc, c.isPlayer ? 9 : 6, 0, 7); g.fill(); g.stroke();

@@ -246,6 +246,7 @@ function collideCars(cars) {
   for (let a = 0; a < cars.length; a++) for (let b = a + 1; b < cars.length; b++) {
     const A = cars[a], B = cars[b];
     if (A.removed || B.removed) continue;
+    if (A.wreck && B.wreck) continue;
     const dx = B.x - A.x, dz = B.z - A.z;
     if (Math.abs(dx) > 6 || Math.abs(dz) > 6) continue;
     // zwei Kreise pro Auto (vorne/hinten)
@@ -255,11 +256,12 @@ function collideCars(cars) {
       let ex = bx - ax, ez = bz - az; const d = Math.hypot(ex, ez);
       if (d < R * 1.45 && d > 1e-4) {
         ex /= d; ez /= d; const pen = (R * 1.45 - d) * 0.5;
-        A.x -= ex * pen; A.z -= ez * pen; B.x += ex * pen; B.z += ez * pen;
+        const wa = A.wreck ? 0 : (B.wreck ? 2 : 1), wb = B.wreck ? 0 : (A.wreck ? 2 : 1);
+        A.x -= ex * pen * wa; A.z -= ez * pen * wa; B.x += ex * pen * wb; B.z += ez * pen * wb;
         const rvn = (B.vx - A.vx) * ex + (B.vz - A.vz) * ez;
         if (rvn < 0) {
           const j = -rvn * 0.55;
-          A.vx -= ex * j; A.vz -= ez * j; B.vx += ex * j; B.vz += ez * j;
+          if (!A.wreck) { A.vx -= ex * j * (B.wreck ? 2 : 1); A.vz -= ez * j * (B.wreck ? 2 : 1); } if (!B.wreck) { B.vx += ex * j * (A.wreck ? 2 : 1); B.vz += ez * j * (A.wreck ? 2 : 1); }
           const lvl = Math.min(1, -rvn / 14);
           A.hit = Math.max(A.hit, lvl * 0.6); B.hit = Math.max(B.hit, lvl * 0.6);
           const mx = (ax + bx) / 2, mz = (az + bz) / 2, amt = (-rvn - 3) / 90;
@@ -308,22 +310,32 @@ function aiControl(c, ai, tr, cars, dt, time, rubber) {
   let capSpeed = Infinity;
   for (const o of cars) {
     if (o === c || o.removed || o.finished && o.isPlayer) continue;
-    let dp = o.prog - c.prog;
+    let dp = ((o.s - c.s) % tr.L + tr.L) % tr.L; // Abstand entlang der Strecke (auch Autos/Wracks aus anderen Runden)
     const obst = o.dead || o.vf < 6;
-    if (dp > 0 && dp < (obst ? 35 + Math.max(0, vf) * 1.3 : 30)) {
+    if (dp > 0 && dp < (obst ? 40 + Math.max(0, vf) * 1.5 : 30)) {
       const dl = o.d - c.d;
-      if (obst && Math.abs(dl) < 3.6 && dp > 4) capSpeed = Math.min(capSpeed, Math.max(6, Math.sqrt(2 * 11 * Math.max(0, dp - 7))));
-      if (Math.abs(dl) < (obst ? 3.8 : 3.0)) {
-        const room = tr.halfW - 2.2;
-        let goal = dl > 0 ? o.d - 3.4 : o.d + 3.4;
-        if (Math.abs(goal) > room) goal = o.d > 0 ? o.d - 3.4 : o.d + 3.4;
-        offT = clamp(goal, -room, room);
+      // seitliche Ausdehnung des Hindernisses (quer stehendes Wrack ist breit)
+      const ext = obst ? 1.0 * Math.abs(Math.cos(wrap(o.h - tr.h[o.i < 0 ? 0 : o.i]))) + 2.8 * Math.abs(Math.sin(wrap(o.h - tr.h[o.i < 0 ? 0 : o.i]))) : 1.0;
+      const clear = ext + 2.5;
+      if (obst && Math.abs(dl) < clear + 0.6 && dp > 4) capSpeed = Math.min(capSpeed, Math.max(6, Math.sqrt(2 * 10 * Math.max(0, dp - 8))));
+      if (Math.abs(dl) < (obst ? clear + 0.6 : 3.0)) {
+        const room = tr.halfW - (obst ? 1.3 : 2.2);
+        if (obst) {
+          const gL = o.d - clear, gR = o.d + clear, okL = gL >= -room, okR = gR <= room;
+          let goal;
+          if (okL && okR) goal = Math.abs(gL - c.d) < Math.abs(gR - c.d) ? gL : gR; else if (okL) goal = gL; else if (okR) goal = gR; else { goal = o.d > 0 ? -room : room; capSpeed = Math.min(capSpeed, 14); }
+          offT = clamp(goal, -room, room);
+        } else {
+          let goal = dl > 0 ? o.d - 3.4 : o.d + 3.4;
+          if (Math.abs(goal) > room) goal = o.d > 0 ? o.d - 3.4 : o.d + 3.4;
+          offT = clamp(goal, -room, room);
+        }
         if (dp < 5 + Math.max(0, vf) * 0.14 && Math.abs(dl) < 2.2) capSpeed = Math.min(capSpeed, Math.max(o.dead ? 5 : 10, o.vf * 0.98));
       }
     }
   }
   ai.off += clamp(offT - ai.off, -3.2 * dt, 3.2 * dt);
-  const room = tr.halfW - 1.8;
+  const room = tr.halfW - 1.3;
   const off = clamp(ai.off, -room, room);
   const tx = tr.px[j] + tr.rx[j] * off, tz = tr.pz[j] + tr.rz[j] * off;
   const want = Math.atan2(-(tx - c.x), -(tz - c.z));
