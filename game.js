@@ -996,7 +996,7 @@ addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (mode === 'race' && race && !race.paused && race.phase !== 'done') togglePause(true); });
 
 /* ------------------------------------------------------------ Spielzustand */
-let mode = 'menu', race = null, camMode = 0;
+let mode = 'menu', race = null, camMode = 0, testCarId = null;
 let selTrack = clamp(save.track | 0, 0, TRACKS.length - 1), selDiff = DIFFS[save.diff] ? save.diff : 'medium';
 let previewId = save.car;
 let hudCache = {};
@@ -1043,10 +1043,12 @@ function renderMenu() {
     else if (owned) act = '<div class="act use">AUSWÄHLEN</div>';
     else if (save.money >= c.price) act = `<div class="act buy">KAUFEN · ${fmtMoney(c.price)}</div>`;
     else act = `<div class="act no">🔒 ${fmtMoney(c.price)}</div>`;
+    if (!owned) act += '<div class="act test">🏁 PROBEFAHRT</div>';
     el.innerHTML = `<div class="row1"><div class="nm">${c.name}</div><div style="width:18px;height:18px;border-radius:50%;background:#${c.color.toString(16).padStart(6, '0')};border:2px solid #${c.accent.toString(16).padStart(6, '0')}"></div></div>
       ${bar('Topspeed', c.top, mx.top)}${bar('Beschl.', c.accel, mx.accel)}${bar('Kurvengrip', c.grip, mx.grip)}${bar('Bremsen', c.brake, mx.brake)}${act}`;
     el.onmouseenter = () => { previewId = c.id; showCarModel(c.id); };
     el.onmouseleave = () => { previewId = save.car; showCarModel(save.car); };
+    const tb = el.querySelector('.act.test'); if (tb) tb.onclick = e => { e.stopPropagation(); testCarId = c.id; startRace(); };
     el.onclick = () => {
       if (owned) { save.car = c.id; }
       else if (save.money >= c.price) { save.money -= c.price; save.owned.push(c.id); save.car = c.id; Sound.init(); Sound.beep(880, 0.15); setTimeout(() => Sound.beep(1320, 0.25), 120); }
@@ -1083,10 +1085,10 @@ function startRace() {
 }
 function initRace() {
   if (raceScene) { disposeScene(raceScene.scene); raceScene = null; }
-  const nCars = clamp(save.bots | 0, 1, 15) + 1;
+  const nCars = Math.min(clamp(save.bots | 0, 1, 15), testCarId ? 5 : 15) + 1;
   raceScene = buildRaceScene(selTrack, nCars);
   const { scene, tr, cfg } = raceScene;
-  const D = DIFFS[selDiff], pSpec = CARS.find(c => c.id === save.car);
+  const D = DIFFS[selDiff], pSpec = CARS.find(c => c.id === (testCarId || save.car));
   const cars = [], playerSlot = Math.min(nCars - 1, { easy: Math.round(nCars * 0.45), medium: Math.round(nCars * 0.7), hard: nCars - 1 }[selDiff]);
   const botSlots = []; for (let k = 0; k < nCars; k++) if (k !== playerSlot) botSlots.push(k);
   const mkCar = (slot, car, ai) => {
@@ -1112,7 +1114,7 @@ function initRace() {
     const tg = new T.Object3D(); tg.position.set(0, -2, -40); player.model.group.add(sp, tg); sp.target = tg;
   }
   debris.length = 0; FX.init(scene); if (save.quality >= 2) Skid.init(scene);
-  race = { scene, tr, cfg, cars, player, laps: cfg.laps, time: 0, phase: 'grid', phaseT: 0, lightsOn: 0, goDelay: rnd(0.6, 1.4), finishOrder: [], done: false, paused: false, acc: 0, wrongT: 0, stuckT: 0, bannerT: 0, shake: 0, rpm: 0.2, gear: 1, lastLap: 0, bestLap: save.best[cfg.id] || 0, resultT: -1, over: false };
+  race = { test: testCarId, testName: pSpec.name, maxV: 0, scene, tr, cfg, cars, player, laps: cfg.laps, time: 0, phase: 'grid', phaseT: 0, lightsOn: 0, goDelay: rnd(0.6, 1.4), finishOrder: [], done: false, paused: false, acc: 0, wrongT: 0, stuckT: 0, bannerT: 0, shake: 0, rpm: 0.2, gear: 1, lastLap: 0, bestLap: testCarId ? 0 : (save.best[cfg.id] || 0), resultT: -1, over: false };
   mode = 'race'; camMode = 0;
   setupHud(); $('hud').classList.remove('hidden');
   drawMapBase();
@@ -1165,10 +1167,10 @@ function togglePause(force) {
 $('bResume').onclick = () => togglePause(false);
 $('bRestart').onclick = () => startRace();
 $('bQuit').onclick = () => toMenu();
-$('startBtn').onclick = () => startRace();
+$('startBtn').onclick = () => { testCarId = null; startRace(); };
 
 function toMenu() {
-  mode = 'menu'; race = null; Sound.silence();
+  testCarId = null; mode = 'menu'; race = null; Sound.silence();
   $('hud').classList.add('hidden'); $('pause').classList.add('hidden'); $('result').classList.add('hidden'); $('loading').classList.add('hidden'); $('menu').classList.remove('hidden');
   if (raceScene) { disposeScene(raceScene.scene); raceScene = null; }
   previewId = save.car; renderMenu();
@@ -1193,6 +1195,7 @@ function stepRace(dt) {
   }
   const racing = R.phase === 'race' || R.phase === 'done';
   if (racing) R.time += dt;
+  if (racing) R.maxV = Math.max(R.maxV, p.vf);
   // Rubber-Banding (nur Leicht/Mittel, sanft)
   const rb = selDiff === 'hard' ? 0 : 0.035;
   for (const c of R.cars) {
@@ -1218,7 +1221,7 @@ function stepRace(dt) {
         const lt = R.time - c.lapStart; c.bestLap = c.bestLap ? Math.min(c.bestLap, lt) : lt;
         if (c.isPlayer && li < R.laps) {
           R.lastLap = lt; let msg = 'Runde ' + li + ': ' + fmtTime(lt);
-          if (!R.bestLap || lt < R.bestLap) { R.bestLap = lt; save.best[R.cfg.id] = lt; persist(); msg += '  ★ Rekord'; }
+          if (!R.bestLap || lt < R.bestLap) { R.bestLap = lt; if (!R.test) { save.best[R.cfg.id] = lt; persist(); } msg += R.test ? '  ★ Bestzeit' : '  ★ Rekord'; }
           setHud('lastLap', msg); if (li === R.laps - 1) showBanner('LETZTE RUNDE', 1800);
         }
       }
@@ -1227,7 +1230,7 @@ function stepRace(dt) {
     if (!c.finished && c.prog >= R.laps * tr.L) {
       c.finished = true; c.finishTime = R.time; R.finishOrder.push(c);
       if (c.isPlayer) {
-        const lt = R.time - (c.lapStart || 0); if (lt > 20) { R.lastLap = lt; if (!R.bestLap || lt < R.bestLap) { R.bestLap = lt; save.best[R.cfg.id] = lt; persist(); } }
+        const lt = R.time - (c.lapStart || 0); if (lt > 20) { R.lastLap = lt; if (!R.bestLap || lt < R.bestLap) { R.bestLap = lt; if (!R.test) { save.best[R.cfg.id] = lt; persist(); } } }
         R.phase = 'done'; R.resultT = 1.6; c.ai = C.makeAI(c.stats, tr, 0.7); c.ai.off = c.d; c.ai.offBase = 0;
         showBanner('ZIEL!', 2000);
       }
@@ -1249,9 +1252,21 @@ function stepRace(dt) {
 function showResult() {
   const R = race, rk = ranking(), pos = R.dnf ? 99 : R.finishOrder.indexOf(R.player) + 1;
   const D = DIFFS[selDiff];
-  let prize = 0; if (pos >= 1 && pos <= 3) prize = Math.round(PRIZES[pos - 1] * D.prize / 50) * 50;
-  save.money += prize; persist();
+  let prize = 0; if (!R.test && pos >= 1 && pos <= 3) prize = Math.round(PRIZES[pos - 1] * D.prize / 50) * 50;
+  if (prize) { save.money += prize; persist(); }
   const rows = rk.map((c, i) => `<tr class="${c.isPlayer ? 'me' : ''}"><td>${i + 1}</td><td>${c.name}</td><td>${c.finished ? fmtTime(c.finishTime) : c.dead ? 'ausgeschieden' : 'unterwegs'}</td></tr>`).join('');
+  if (R.test) {
+    const spec = CARS.find(c => c.id === R.test), canBuy = save.money >= spec.price && !save.owned.includes(spec.id);
+    const best = R.player.bestLap || R.bestLap;
+    $('resultBox').innerHTML = `<h1 class="win" style="font-size:34px">PROBEFAHRT BEENDET</h1><div class="big"><b>${spec.name}</b></div>
+      <div class="big" style="font-size:16px">${R.dnf ? 'Ausgeschieden (Reifen verloren)' : 'Platz ' + pos + ' von ' + R.cars.length} · Beste Runde: <b>${best ? fmtTime(best) : '–'}</b> · Höchstgeschwindigkeit: <b>${Math.round(R.maxV * 3.6)} km/h</b></div>
+      <table>${rows}</table><div class="big" style="font-size:15px">Kontostand: <b style="color:#ffd54a">${fmtMoney(save.money)}</b> · Preis: <b>${fmtMoney(spec.price)}</b></div>
+      <div class="btns">${canBuy ? '<button class="pri" id="rBuy">Kaufen</button>' : ''}<button ${canBuy ? '' : 'class="pri"'} id="rAgain">Nochmal testen</button><button id="rMenu">Menü / Garage</button></div>`;
+    $('result').classList.remove('hidden');
+    $('rAgain').onclick = () => startRace(); $('rMenu').onclick = () => toMenu();
+    if (canBuy) $('rBuy').onclick = () => { save.money -= spec.price; save.owned.push(spec.id); save.car = spec.id; persist(); toMenu(); };
+    Sound.silence(); Sound.beep(660, 0.3); return;
+  }
   const head = R.dnf ? '<h1 class="lose">AUSGESCHIEDEN</h1>' : pos <= 3 ? `<h1 class="win">${['🏆 SIEG!', 'PLATZ 2', 'PLATZ 3'][pos - 1]}</h1>` : `<h1 class="lose">PLATZ ${pos}</h1>`;
   const body = prize > 0 ? `<div class="big">Podium geschafft – du erhältst</div><div class="prize">+ ${fmtMoney(prize)}</div>` : R.dnf ? `<div class="big">Ein Reifen ist abgerissen – du kannst nicht weiterfahren.</div>` : `<div class="big">Kein Podium – für Preisgeld brauchst du mindestens Platz 3.</div>`;
   $('resultBox').innerHTML = `${head}${body}<table>${rows}</table><div class="big" style="font-size:15px">Kontostand: <b style="color:#ffd54a">${fmtMoney(save.money)}</b></div><div class="btns"><button class="pri" id="rAgain">Nochmal fahren</button><button id="rMenu">Menü / Garage</button></div>`;
@@ -1342,7 +1357,7 @@ function updateHud(R, p, speed) {
   const rk = ranking(), pos = rk.indexOf(p) + 1;
   setHud('posBig', String(R.finishOrder.includes(p) ? R.finishOrder.indexOf(p) + 1 : pos));
   const lap = clamp(Math.floor(p.prog / R.tr.L) + 1, 1, R.laps);
-  setHud('lapTxt', 'RUNDE ' + (p.finished ? R.laps : lap) + ' / ' + R.laps);
+  setHud('lapTxt', 'RUNDE ' + (p.finished ? R.laps : lap) + ' / ' + R.laps + (R.test ? ' · PROBEFAHRT' : ''));
   setHud('spd', String(Math.round(speed * 3.6)));
   setHud('gear', R.gear === -1 ? 'R' : R.gear === 0 ? 'N' : String(R.gear));
   const on = Math.round(R.rpm * 18), segs = $('rpm').children;
