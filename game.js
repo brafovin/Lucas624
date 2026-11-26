@@ -805,10 +805,11 @@ const FX = {
   }
 };
 const debris = [];
-function detachPart(c, part, big) {
+function detachPart(c, part, big, boost) {
+  boost = boost || 1;
   if (!part || !raceScene) return;
   raceScene.scene.attach(part);
-  debris.push({ o: part, v: new T.Vector3(c.vx * 0.8 + rnd(-5, 5), rnd(3, big ? 9 : 6), c.vz * 0.8 + rnd(-5, 5)), w: new T.Vector3(rnd(-9, 9), rnd(-9, 9), rnd(-9, 9)), life: 30, r: big ? 0.35 : 0.12 });
+  debris.push({ o: part, v: new T.Vector3(c.vx * 0.8 + rnd(-5, 5) * boost, rnd(3, big ? 9 : 6) * boost, c.vz * 0.8 + rnd(-5, 5) * boost), w: new T.Vector3(rnd(-9, 9), rnd(-9, 9), rnd(-9, 9)), life: 30, r: big ? 0.35 : 0.12 });
 }
 function updateDebris(dt) {
   for (let i = debris.length - 1; i >= 0; i--) {
@@ -919,6 +920,7 @@ const Sound = {
   silence() { if (!this.ok) return; const t = this.ctx.currentTime; this.eg.gain.setTargetAtTime(0, t, 0.1); this.squeal.g.gain.setTargetAtTime(0, t, 0.1); this.wind.g.gain.setTargetAtTime(0, t, 0.1); this.grass.g.gain.setTargetAtTime(0, t, 0.1); },
   beep(freq, dur) { if (!this.ok) return; const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain(); o.type = 'sine'; o.frequency.value = freq; g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(g).connect(this.master); o.start(t); o.stop(t + dur); },
   crash(v) { if (!this.ok) return; const t = this.ctx.currentTime, s = this.ctx.createBufferSource(); const b = this.ctx.createBuffer(1, 8000, this.ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length); s.buffer = b; const g = this.ctx.createGain(); g.gain.value = 0.15 + v * 0.5; const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; s.connect(f).connect(g).connect(this.master); s.start(t); },
+  boom() { if (!this.ok) return; const t = this.ctx.currentTime, s = this.ctx.createBufferSource(), n = this.ctx.sampleRate * 1.6, b = this.ctx.createBuffer(1, n, this.ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.2); s.buffer = b; const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(70, t + 1.4); const g = this.ctx.createGain(); g.gain.value = 1.2; s.connect(f).connect(g).connect(this.master); s.start(t); },
   mute(m) { save.muted = m; persist(); if (this.ok) this.master.gain.value = m ? 0 : 0.5; }
 };
 
@@ -989,6 +991,10 @@ addEventListener('keydown', e => {
     if (e.code === 'KeyC') camMode = (camMode + 1) % 2;
     if (e.code === 'KeyR') respawn();
     if (e.code === 'Escape') togglePause();
+  }
+  if (mode === 'race' && race && !race.paused && e.key && e.key.length === 1 && !e.repeat) {
+    secretBuf = (secretBuf + e.key.toLowerCase()).slice(-5);
+    if (secretBuf === 'lucas') { secretBuf = ''; camMode = (camMode + 1) % 2; explodeAllBots(); }
   }
   if (e.code === 'KeyM') { Sound.mute(!save.muted); }
 });
@@ -1146,6 +1152,7 @@ function ranking() {
   return R.cars.slice().sort((a, b) => {
     if (a.finished && b.finished) return a.finishTime - b.finishTime;
     if (a.finished) return -1; if (b.finished) return 1;
+    if (a.dead !== b.dead) return a.dead ? 1 : -1;
     return b.prog - a.prog;
   });
 }
@@ -1181,6 +1188,27 @@ function inputForPlayer() {
   const up = keys.KeyW || keys.ArrowUp, down = keys.KeyS || keys.ArrowDown, left = keys.KeyA || keys.ArrowLeft, right = keys.KeyD || keys.ArrowRight;
   return { throttle: up ? 1 : 0, brake: down ? 1 : 0, steer: (left ? 1 : 0) - (right ? 1 : 0), drift: !!keys.Space };
 }
+
+/* ---------- Geheimcode „lucas“: alle Bots explodieren ---------- */
+function explodeCar(c) {
+  const m = c.model, P = [c.x, 0.5, c.z];
+  for (let i = 0; i < 26; i++) FX.spawn('glow', P[0] + rnd(-1.2, 1.2), 0.6 + rnd(0, 1.2), P[2] + rnd(-1.2, 1.2), rnd(-5, 5), rnd(2, 9), rnd(-5, 5), rnd(0.5, 1.2), rnd(3, 6), rnd(3, 6), Math.random() < 0.5 ? 0xff7a20 : 0xffc040, 0.95, 4);
+  for (let i = 0; i < 22; i++) FX.spawn('smoke', P[0] + rnd(-1, 1), 0.8, P[2] + rnd(-1, 1), rnd(-4, 4), rnd(2, 8), rnd(-4, 4), rnd(1.8, 3.4), 2, 7, 0x1a1a1a, 0.7, -1);
+  sparks(P[0], 0.8, P[2], c, 40);
+  for (let i = 0; i < 4; i++) if (!c.lost.w[i]) { c.lost.w[i] = true; m.wheels[i].gone = true; detachPart(c, m.wheels[i].pivot, true, 3.2); }
+  if (!c.lost.fw) { c.lost.fw = true; detachPart(c, m.fwing, false, 3.5); }
+  if (!c.lost.rw) { c.lost.rw = true; detachPart(c, m.rwing, false, 3.5); }
+  detachPart(c, m.halo, false, 3);
+  m.group.visible = false; c.removed = true; c.dead = true; c.vx = c.vz = c.vf = 0;
+}
+function explodeAllBots() {
+  const R = race; if (!R || R.paused || R.phase === 'done') return;
+  let n = 0; R.cars.forEach(c => { if (!c.isPlayer && !c.removed) { explodeCar(c); n++; } });
+  if (!n) return; Sound.crash(1); setTimeout(() => Sound.crash(1), 120); Sound.boom();
+  R.shake = Math.max(R.shake, 0.7); const f = $('flash'); f.style.background = '#ff9a2a'; f.style.opacity = '0.55'; setTimeout(() => { f.style.opacity = '0'; setTimeout(() => f.style.background = '#ff2a00', 400); }, 140);
+  showBanner('💥 ALLE BOTS EXPLODIERT!', 3200);
+}
+let secretBuf = '';
 
 /* ---------- Geplante Unfälle: pro Runde 1–5 Bots, Wracks bleiben mitten auf der Strecke ---------- */
 function planIncidents(R) {
@@ -1320,7 +1348,7 @@ function renderRace(dt) {
     c.wheelAng -= c.vf * dt / 0.34;
     const w = c.model.wheels; w.forEach(x => { if (!x.gone) x.spin.rotation.x = c.wheelAng; });
     if (!w[0].gone) w[0].pivot.rotation.y = c.steer * 0.32; if (!w[1].gone) w[1].pivot.rotation.y = c.steer * 0.32;
-    if (dt > 0) emitDamageFx(c, dt);
+    if (dt > 0 && !c.removed) emitDamageFx(c, dt);
     const braking = c.inp && c.inp.brake > 0.1 && c.vf > 1;
     c.model.tailM.emissiveIntensity = braking ? 3.2 : 0.6;
     if (c.isPlayer) { c.model.wheelRot.rotation.z = c.steer * 1.4; }
@@ -1334,7 +1362,7 @@ function renderRace(dt) {
     }
     if ((S.cube.n++ % 14) === 0) {
       S.cube.cam.position.set(p.x, 1.3, p.z); R.cars.forEach(c => c.model.group.visible = false); const sa = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
-      S.cube.cam.update(renderer, S.scene); renderer.shadowMap.autoUpdate = sa; R.cars.forEach(c => c.model.group.visible = true);
+      S.cube.cam.update(renderer, S.scene); renderer.shadowMap.autoUpdate = sa; R.cars.forEach(c => c.model.group.visible = !c.removed);
     }
   }
   // Kamera
@@ -1408,6 +1436,7 @@ function updateHud(R, p, speed) {
   const cv = $('map'), g = cv.getContext('2d'), m = R.map;
   g.clearRect(0, 0, cv.width, cv.height); g.drawImage(mapBase, 0, 0);
   for (const c of R.cars) {
+    if (c.removed) continue;
     if (c.wreck || c.crash) { g.fillStyle = '#ff2a1a'; g.strokeStyle = '#fff'; g.lineWidth = 3; g.beginPath(); g.arc(m.ox + (c.x - m.x0) * m.sc, m.oz + (c.z - m.z0) * m.sc, 10, 0, 7); g.fill(); g.stroke(); continue; }
     g.fillStyle = c.isPlayer ? '#ffd54a' : '#' + c.color.toString(16).padStart(6, '0');
     g.strokeStyle = '#000'; g.lineWidth = 2;
@@ -1455,5 +1484,5 @@ function frame(now) {
 // Start
 $('loading').textContent = 'LADE TEXTUREN …'; $('loading').classList.remove('hidden');
 preloadImages().then(() => { $('loading').classList.add('hidden'); $('loading').textContent = 'LADE STRECKE …'; applyQuality(); renderMenu(); requestAnimationFrame(frame); });
-window.__game = { get postState() { return JSON.stringify({ on: Post.enabled(), built: !!Post.composer, failed: Post.failed, q: save.quality, scale: Gov.scale, pr: renderer.getPixelRatio() }); }, dbg(p, l) { if (race) race.dbg = p ? { p, l } : null; }, step(n) { for (let i = 0; i < n; i++) stepRace(STEP); }, get race() { return race; }, save, startRace, toMenu, setSel(t, d) { selTrack = t; selDiff = d; } };
+window.__game = { explode: () => explodeAllBots(), get postState() { return JSON.stringify({ on: Post.enabled(), built: !!Post.composer, failed: Post.failed, q: save.quality, scale: Gov.scale, pr: renderer.getPixelRatio() }); }, dbg(p, l) { if (race) race.dbg = p ? { p, l } : null; }, step(n) { for (let i = 0; i < n; i++) stepRace(STEP); }, get race() { return race; }, save, startRace, toMenu, setSel(t, d) { selTrack = t; selDiff = d; } };
 })();
